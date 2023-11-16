@@ -9,6 +9,7 @@ from sklearn.linear_model import LinearRegression
 
 import reconstructWave as rW
 import MelFilterBank as mel
+from tqdm import tqdm
 
 
 def createAudio(spectrogram, audiosr=16000, winLength=0.05, frameshift=0.01):
@@ -64,7 +65,7 @@ if __name__=="__main__":
     numRands = 1000
     randomControl = np.zeros((len(pts),numRands, 23))
 
-    for pNr, pt in enumerate(pts):
+    for pNr, pt in tqdm(enumerate(pts)):
         #Load the data
         spectrogram = np.load(os.path.join(feat_path,f'{pt}_spec.npy'))
         data = np.load(os.path.join(feat_path,f'{pt}_feat.npy'))
@@ -98,12 +99,12 @@ if __name__=="__main__":
             #Evaluate reconstruction of this fold
             for specBin in range(spectrogram.shape[1]):
                 if np.any(np.isnan(rec_spec)):
-                    print('%s has %d broken samples in reconstruction' % (pt, np.sum(np.isnan(rec_spec))))
+                    tqdm.write('%s has %d broken samples in reconstruction' % (pt, np.sum(np.isnan(rec_spec))))
                 r, p = pearsonr(spectrogram[test, specBin], rec_spec[test, specBin])
                 rs[k,specBin] = r
 
         #Show evaluation result
-        print('%s has mean correlation of %f' % (pt, np.mean(rs)))
+        tqdm.write('%s has mean correlation of %f' % (pt, np.mean(rs)))
         allRes[pNr,:,:]=rs
 
         #Estimate random baseline

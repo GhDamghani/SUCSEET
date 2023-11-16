@@ -1,2 +1,6 @@
 
 SingleWordProductionDutch-iBIDS
+SingleWordProductionDutch-main/features
+SingleWordProductionDutch-main/results
+*__pycache__
+HuBERT Extract Hidden Units/results/

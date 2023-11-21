@@ -142,7 +142,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
     lossfn = torch.nn.CrossEntropyLoss()
 
-    create_test_files = False
+    create_test_files = True
 
     min_test_loss = float('inf')
     last_test_loss = float('inf')
@@ -197,7 +197,7 @@ if __name__ == '__main__':
 
         tqdm.write(f'Avg train loss: {train_loss/no_data_train}')
 
-        # model.eval()
+        model.eval()
 
         if create_test_files:
             test_prc = Process(target=test_data_gen)

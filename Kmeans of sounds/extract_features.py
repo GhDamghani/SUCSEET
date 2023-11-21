@@ -211,8 +211,8 @@ if __name__=="__main__":
         melSpec = extractMelSpecs(scaled,audio_sr,windowLength=winL,frameshift=frameshift)
         
         #Align to EEG features
-        words = downsampleLabels(words,eeg_sr,windowLength=winL,frameshift=frameshift)
-        words = words[modelOrder*stepSize:words.shape[0]-modelOrder*stepSize]
+        # words = downsampleLabels(words,eeg_sr,windowLength=winL,frameshift=frameshift)
+        # words = words[modelOrder*stepSize:words.shape[0]-modelOrder*stepSize]
         melSpec = melSpec[modelOrder*stepSize:melSpec.shape[0]-modelOrder*stepSize,:]
         #adjust length (differences might occur due to rounding in the number of windows)
         if melSpec.shape[0]!=feat.shape[0]:
@@ -221,7 +221,7 @@ if __name__=="__main__":
             feat = feat[:tLen,:]
         
         #Create feature names by appending the temporal shift 
-        feature_names = nameVector(channels[:,None], modelOrder=modelOrder)
+        # feature_names = nameVector(channels[:,None], modelOrder=modelOrder)
 
         #Save everything
         np.save(os.path.join(path_output,f'{participant}_feat.npy'), feat)

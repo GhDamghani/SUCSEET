@@ -5,4 +5,5 @@ SingleWordProductionDutch-main/results
 *__pycache__
 HuBERT Extract Hidden Units/results/
 Transformer model 01 for kmeans/train_data
+Transformer model 01 for kmeans/test_data
 Kmeans of sounds/features

@@ -142,7 +142,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
     lossfn = torch.nn.CrossEntropyLoss()
 
-    create_test_files = True
+    create_test_files = False
 
     min_test_loss = float('inf')
     last_test_loss = float('inf')
@@ -217,8 +217,8 @@ if __name__ == '__main__':
                     except:
                         pass
                         # print('Error!')
-                y = z['y']
-                X = z['X']
+                y = z['y'].astype('float32')
+                X = z['X'].astype('float32')
                 z.close()
                 X, y = torch.tensor(X).to(device), torch.tensor(y).to(device)
 

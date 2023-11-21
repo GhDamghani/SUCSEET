@@ -75,7 +75,7 @@ def train_data_gen(epoch_i, path=train_data_path):
         x_batch = []
         y_batch = []
         for s_ind in trainname_batch:  # preprocessing
-            x1 = feat[s_ind:s_ind+w]
+            x1 = np.transpose(feat[s_ind:s_ind+w])
             y0 = np.expand_dims(melSpec[s_ind:s_ind+w].flatten(), 0)
             y0 = kmeans.predict(y0).item()
             y1 = np.zeros((n_clusters,))
@@ -85,7 +85,7 @@ def train_data_gen(epoch_i, path=train_data_path):
 
         x_batch = np.array(x_batch)
         y_batch = np.array(y_batch)
-        while len(listdir(path)) >= no_train_batches:
+        while len(listdir(path)) >= no_train_batches//3:
             pass
         np.savez(
             join(path, f'train_E{epoch_i:04}_B{i:04}'), X=x_batch, y=y_batch)
@@ -99,7 +99,7 @@ def test_data_gen(path=test_data_path):
         x_batch = []
         y_batch = []
         for s_ind in trainname_batch:  # preprocessing
-            x1 = feat[s_ind:s_ind+w]
+            x1 = np.transpose(feat[s_ind:s_ind+w])
             y0 = np.expand_dims(melSpec[s_ind:s_ind+w].flatten(), 0)
             y0 = kmeans.predict(y0).item()
             y1 = np.zeros((n_clusters,))
@@ -131,12 +131,12 @@ if __name__ == '__main__':
         else "cpu"
     )
     num_layers = 8
-    d_model = 127
+    d_model = 100
     n_head = 10
     d_ff = 100
     dropout = 0.5
 
-    model = TransformerEncoder(num_layers, d_model, n_head, d_ff, dropout)
+    model = TransformerEncoder(num_layers, d_model, n_head, d_ff, n_clusters, dropout).to(device)
     print(model)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
@@ -170,8 +170,8 @@ if __name__ == '__main__':
                 except:
                     pass
                     # print('Error!')
-            y = z['y']
-            X = z['X']
+            y = z['y'].astype('float32')
+            X = z['X'].astype('float32')
             current_batch_size = X.shape[0]
             X, y = torch.tensor(X).to(device), torch.tensor(y).to(device)
             z.close()

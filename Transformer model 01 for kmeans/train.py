@@ -19,7 +19,7 @@ participant = 'sub-06'
 melSpec = np.load(join(path_input, f'{participant}_spec.npy'))
 feat = np.load(join(path_input, f'{participant}_feat.npy'))
 kmeans = joblib.load(join(kmeans_folder, 'kmeans.joblib'))
-n_clusters = 50
+num_classes = 20
 
 no_samples = melSpec.shape[0]
 w = 100
@@ -78,7 +78,7 @@ def train_data_gen(epoch_i, path=train_data_path):
             x1 = np.transpose(feat[s_ind:s_ind+w])
             y0 = np.expand_dims(melSpec[s_ind:s_ind+w].flatten(), 0)
             y0 = kmeans.predict(y0).item()
-            y1 = np.zeros((n_clusters,))
+            y1 = np.zeros((num_classes,))
             y1[y0] = 1.
             x_batch.append(x1)
             y_batch.append(y1)
@@ -102,7 +102,7 @@ def test_data_gen(path=test_data_path):
             x1 = np.transpose(feat[s_ind:s_ind+w])
             y0 = np.expand_dims(melSpec[s_ind:s_ind+w].flatten(), 0)
             y0 = kmeans.predict(y0).item()
-            y1 = np.zeros((n_clusters,))
+            y1 = np.zeros((num_classes,))
             y1[y0] = 1.
             x_batch.append(x1)
             y_batch.append(y1)
@@ -133,11 +133,12 @@ if __name__ == '__main__':
     num_layers = 8
     d_model = 100
     n_head = 10
-    d_ff = 100
+    d_ff = 400
     dropout = 0.5
 
-    model = TransformerEncoder(num_layers, d_model, n_head, d_ff, n_clusters, dropout).to(device)
+    model = TransformerEncoder(num_layers, d_model, n_head, d_ff, num_classes, dropout).to(device)
     print(model)
+    print('Total number of trainable parameters:', sum(p.numel() for p in model.parameters() if p.requires_grad))
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
     lossfn = torch.nn.CrossEntropyLoss()
@@ -165,13 +166,13 @@ if __name__ == '__main__':
             read_flag = False
             while not (read_flag):
                 try:
-                    z = np.load(filename)
+                    with np.load(filename) as z:
+                        y = z['y'].astype('float32')
+                        X = z['X'].astype('float32')
                     read_flag = True
                 except:
                     pass
                     # print('Error!')
-            y = z['y'].astype('float32')
-            X = z['X'].astype('float32')
             current_batch_size = X.shape[0]
             X, y = torch.tensor(X).to(device), torch.tensor(y).to(device)
             z.close()
@@ -193,7 +194,7 @@ if __name__ == '__main__':
             if (batch_i + 1) % print_batch == 0:
                 loss, current = loss.item(), (batch_i + 1) * batch_size
                 tqdm.write(
-                    f"loss: {loss/current_batch_size:>7f}  [{current:>04d}/{no_data_train:>04d}]")
+                    f"loss: {100*loss/current_batch_size:>7f}  [{current:>04d}/{no_data_train:>04d}]")
 
         tqdm.write(f'Avg train loss: {train_loss/no_data_train}')
 
@@ -212,14 +213,13 @@ if __name__ == '__main__':
                 read_flag = False
                 while not (read_flag):
                     try:
-                        z = np.load(filename)
+                        with np.load(filename) as z:
+                            y = z['y'].astype('float32')
+                            X = z['X'].astype('float32')
                         read_flag = True
                     except:
                         pass
                         # print('Error!')
-                y = z['y'].astype('float32')
-                X = z['X'].astype('float32')
-                z.close()
                 X, y = torch.tensor(X).to(device), torch.tensor(y).to(device)
 
                 pred = model(X)
@@ -228,7 +228,7 @@ if __name__ == '__main__':
 
         test_loss /= no_data_test
         tqdm.write(
-            f"Test Error Epoch {epoch_i:04}: \n Avg loss: {test_loss:>8f} \n")
+            f"Test Error Epoch {epoch_i:04}: \n Avg loss: {100*test_loss:>8f} \n")
 
         if min_test_loss > test_loss:
             best_epoch = epoch_i
@@ -236,7 +236,7 @@ if __name__ == '__main__':
             torch.save(model.state_dict(), "model.pth")
             tqdm.write(f'Best Epoch: {best_epoch}! Model Saved')
 
-        if last_test_loss * 0.99 >= test_loss:
+        if last_test_loss * 0.999 >= test_loss:
             progressive_epoch = epoch_i
 
         last_test_loss = test_loss

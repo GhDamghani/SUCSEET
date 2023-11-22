@@ -5,14 +5,12 @@ from os import listdir, remove, mkdir
 import joblib
 from sklearn.utils import gen_batches
 from multiprocessing import Process, freeze_support
-from model import TransformerEncoder
+from model import TransformerModel
 import torch
 from tqdm import tqdm
+import shutil
 
 kmeans_folder = join('..', 'Kmeans of sounds')
-sys.path.append(kmeans_folder)
-# from slider import slider
-
 path_input = join(kmeans_folder, 'features')
 participant = 'sub-06'
 
@@ -38,15 +36,16 @@ def train_test_label(no_samples, r=0.2, w=w, p=0.1, seed=15):
     if 0 < p < 1:
         # Only a portion of train data to test the general capability of the model at first, optional
         np.random.seed(28)  # reproducibility
-        train_indices = np.random.choice(train_indices, int(len(train_indices)*p), replace=False)
-    
+        train_indices = np.random.choice(
+            train_indices, int(len(train_indices)*p), replace=False)
+
     train_indices = np.array(train_indices)
     test_indices = np.array(test_indices)
 
     return train_indices, test_indices
 
 
-train_indices, test_indices = train_test_label(no_samples, p=1)
+train_indices, test_indices = train_test_label(no_samples, p=0.01)
 
 epochs = 1000
 batch_size = 16
@@ -63,6 +62,7 @@ train_data_path = 'train_data'
 test_data_path = 'test_data'
 
 
+
 def train_data_gen(epoch_i, path=train_data_path):
     if not exists(path):
         mkdir(path)
@@ -75,11 +75,12 @@ def train_data_gen(epoch_i, path=train_data_path):
         x_batch = []
         y_batch = []
         for s_ind in trainname_batch:  # preprocessing
-            x1 = np.transpose(feat[s_ind:s_ind+w])
-            y0 = np.expand_dims(melSpec[s_ind:s_ind+w].flatten(), 0)
-            y0 = kmeans.predict(y0).item()
-            y1 = np.zeros((num_classes,))
-            y1[y0] = 1.
+            x1 = feat[s_ind:s_ind+w]
+            y0 = melSpec[s_ind:s_ind+w]
+            y0 = kmeans.predict(y0)
+            y1 = np.zeros((w, num_classes))
+            for j in range(w):
+                y1[j, y0[j]] = 1.
             x_batch.append(x1)
             y_batch.append(y1)
 
@@ -99,11 +100,12 @@ def test_data_gen(path=test_data_path):
         x_batch = []
         y_batch = []
         for s_ind in trainname_batch:  # preprocessing
-            x1 = np.transpose(feat[s_ind:s_ind+w])
-            y0 = np.expand_dims(melSpec[s_ind:s_ind+w].flatten(), 0)
-            y0 = kmeans.predict(y0).item()
-            y1 = np.zeros((num_classes,))
-            y1[y0] = 1.
+            x1 = feat[s_ind:s_ind+w]
+            y0 = melSpec[s_ind:s_ind+w]
+            y0 = kmeans.predict(y0)
+            y1 = np.zeros((w, num_classes))
+            for j in range(w):
+                y1[j, y0[j]] = 1.
             x_batch.append(x1)
             y_batch.append(y1)
 
@@ -130,20 +132,21 @@ if __name__ == '__main__':
         if torch.backends.mps.is_available()
         else "cpu"
     )
-    num_layers = 8
-    d_model = 100
-    n_head = 10
-    d_ff = 400
+    seq_length_in = 127
+    seq_length_out = 20
     dropout = 0.5
+    num_layers = 6
 
-    model = TransformerEncoder(num_layers, d_model, n_head, d_ff, num_classes, dropout).to(device)
+    model = TransformerModel(seq_length_in, seq_length_out,
+                             dropout=dropout, num_layers=num_layers).to(device)
     print(model)
-    print('Total number of trainable parameters:', sum(p.numel() for p in model.parameters() if p.requires_grad))
+    print('Total number of trainable parameters:', sum(p.numel()
+          for p in model.parameters() if p.requires_grad))
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
     lossfn = torch.nn.CrossEntropyLoss()
 
-    create_test_files = False
+    create_test_files = True
 
     min_test_loss = float('inf')
     last_test_loss = float('inf')
@@ -175,12 +178,13 @@ if __name__ == '__main__':
                     # print('Error!')
             current_batch_size = X.shape[0]
             X, y = torch.tensor(X).to(device), torch.tensor(y).to(device)
-            z.close()
 
             # Compute prediction error
             pred = model(X)
-            loss = lossfn(pred, y)
-            train_loss += loss.item()
+            loss = 0
+            for k in range(y.shape[1]):
+                loss += lossfn(pred[:, k, :], y[:, k, :])
+            train_loss += loss.item()/w
 
             del X, y, z
 
@@ -223,12 +227,12 @@ if __name__ == '__main__':
                 X, y = torch.tensor(X).to(device), torch.tensor(y).to(device)
 
                 pred = model(X)
-                test_loss += lossfn(pred, y).item()
+                test_loss += lossfn(pred, y).item()/w
                 del X, y
 
         test_loss /= no_data_test
         tqdm.write(
-            f"Test Error Epoch {epoch_i:04}: \n Avg loss: {100*test_loss:>8f} \n")
+            f"Test Error Epoch {epoch_i:04}: \n Avg loss: {test_loss:>8f} \n")
 
         if min_test_loss > test_loss:
             best_epoch = epoch_i

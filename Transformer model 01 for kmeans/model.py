@@ -1,24 +1,44 @@
 import torch
 import torch.nn as nn
 
-class TransformerEncoder(nn.Module):
-    def __init__(self, num_layers, d_model, n_head, d_ff, num_classes, dropout):
-        super(TransformerEncoder, self).__init__()
-        self.Encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model, n_head, d_ff, dropout), num_layers)
-        self.classifier_head = nn.Sequential(
-           nn.Linear(d_model, num_classes),
-           nn.Softmax(dim=1),
-       )
+class TransformerModel(nn.Module):
+    def __init__(self, seq_length_in, seq_length_out, num_heads=1, num_layers=6, dropout=0.1):
+        super(TransformerModel, self).__init__()
+
+        # Transformer layers
+        self.transformer = nn.Transformer(
+            d_model=seq_length_in,
+            nhead=num_heads,
+            num_encoder_layers=num_layers,
+            num_decoder_layers=num_layers,
+            dropout = dropout
+        )
+
+        # Fully connected layer with softmax
+        self.fc_softmax = nn.Linear(seq_length_in, seq_length_out)
 
     def forward(self, x):
-        ba, ch, sa = x.shape
-        # x = torch.reshape(x, (ba, sa, ch))
-        # x = torch.transpose(x, 1, 2)
-        x = self.Encoder(x)
-        # torch.reshape(x, (ba, ch, sa))
 
-        # Global average pooling
-        x = x.mean(dim=1)
-        
-        x = self.classifier_head(x)
+        # Transformer forward pass
+        x = self.transformer(x, x)  # Pass the same sequence as src and tgt
+
+        # Apply softmax to each vector in the output sequence
+        x = self.fc_softmax(x)
+        x = nn.functional.softmax(x, dim=-1)
+
         return x
+
+
+
+if __name__ == '__main__':
+    # Example usage
+    seq_no = 100
+    batch_size = 16
+    seq_length_in = 127
+    seq_length_out = 20
+
+    model = TransformerModel(seq_length_in, seq_length_out)
+    print(model)
+    input_sequence = torch.rand((batch_size, seq_no, seq_length_in))
+    output_sequence = model(input_sequence)
+    print(input_sequence.shape, output_sequence.shape)

@@ -23,21 +23,23 @@ no_samples = melSpec.shape[0]
 w = 100
 
 
-def train_test_label(no_samples, r=0.2, w=w, p=0.1, seed=15):
+def train_test_label(no_samples, r=0.25, w=w, p=0.1, seed=1534):
     l_test = np.int32(np.round(no_samples*r))
     assert l_test > w
-    train_pick_list = list(range(w, no_samples-w-l_test+1))  # + [0, -1]
+    test_pick_list = list(range(w, no_samples-w-l_test+1))  # + [0, -1]
     np.random.seed(seed)  # reproducibility
-    test_indice_clip = np.random.choice(train_pick_list, 1).item()
-    train_indices = list(range(0, test_indice_clip-w)) + \
-        list(range(test_indice_clip+l_test, no_samples-w+1))
-    test_indices = list(range(test_indice_clip, test_indice_clip+l_test-w+1))
+    test_index_clip = np.random.choice(test_pick_list, 1).item()
+    train_indices = list(range(0, test_index_clip-w)) + \
+        list(range(test_index_clip+l_test, no_samples-w+1))
+    test_indices = list(range(test_index_clip, test_index_clip+l_test-w+1))
 
     if 0 < p < 1:
         # Only a portion of train data to test the general capability of the model at first, optional
         np.random.seed(28)  # reproducibility
         train_indices = np.random.choice(
             train_indices, int(len(train_indices)*p), replace=False)
+        test_indices = np.random.choice(
+            test_indices, int(len(test_indices)*p), replace=False)
 
     train_indices = np.array(train_indices)
     test_indices = np.array(test_indices)
@@ -45,7 +47,7 @@ def train_test_label(no_samples, r=0.2, w=w, p=0.1, seed=15):
     return train_indices, test_indices
 
 
-train_indices, test_indices = train_test_label(no_samples, p=0.01)
+train_indices, test_indices = train_test_label(no_samples, p=1)
 
 epochs = 1000
 batch_size = 16
@@ -62,7 +64,6 @@ train_data_path = 'train_data'
 test_data_path = 'test_data'
 
 
-
 def train_data_gen(epoch_i, path=train_data_path):
     if not exists(path):
         mkdir(path)
@@ -75,12 +76,10 @@ def train_data_gen(epoch_i, path=train_data_path):
         x_batch = []
         y_batch = []
         for s_ind in trainname_batch:  # preprocessing
-            x1 = feat[s_ind:s_ind+w]
+            x1 = np.concatenate((feat[s_ind:s_ind+w], np.zeros((w, 1))), 1)
+            # x1 = feat[s_ind:s_ind+w]
             y0 = melSpec[s_ind:s_ind+w]
-            y0 = kmeans.predict(y0)
-            y1 = np.zeros((w, num_classes))
-            for j in range(w):
-                y1[j, y0[j]] = 1.
+            y1 = kmeans.predict(y0)
             x_batch.append(x1)
             y_batch.append(y1)
 
@@ -100,12 +99,10 @@ def test_data_gen(path=test_data_path):
         x_batch = []
         y_batch = []
         for s_ind in trainname_batch:  # preprocessing
-            x1 = feat[s_ind:s_ind+w]
+            x1 = np.concatenate((feat[s_ind:s_ind+w], np.zeros((w, 1))), 1)
+            # x1 = feat[s_ind:s_ind+w]
             y0 = melSpec[s_ind:s_ind+w]
-            y0 = kmeans.predict(y0)
-            y1 = np.zeros((w, num_classes))
-            for j in range(w):
-                y1[j, y0[j]] = 1.
+            y1 = kmeans.predict(y0)
             x_batch.append(x1)
             y_batch.append(y1)
 
@@ -132,36 +129,40 @@ if __name__ == '__main__':
         if torch.backends.mps.is_available()
         else "cpu"
     )
-    seq_length_in = 127
-    seq_length_out = 20
-    dropout = 0.5
-    num_layers = 6
+    d_model = 128
+    d_out = num_classes
+    num_heads = 8
+    dropout = 0.2
+    num_layers = 2
 
-    model = TransformerModel(seq_length_in, seq_length_out,
-                             dropout=dropout, num_layers=num_layers).to(device)
+    model = TransformerModel(d_model, d_out,
+                             dropout=dropout, num_layers=num_layers, num_heads=num_heads).to(device)
     print(model)
     print('Total number of trainable parameters:', sum(p.numel()
           for p in model.parameters() if p.requires_grad))
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
     lossfn = torch.nn.CrossEntropyLoss()
 
-    create_test_files = True
+    create_test_files = not (exists(test_data_path))
 
     min_test_loss = float('inf')
     last_test_loss = float('inf')
     best_epoch = 0
     progressive_epoch = 0
     patience = 15
-    print_batch = int(np.round_(no_train_batches/5))
+    log_interval = int(np.round_(no_train_batches/5))
 
-    prc = Process(target=train_data_gen_proc, args=(epochs,))
-    prc.start()
+    train_prc = Process(target=train_data_gen_proc, args=(epochs,))
+    train_prc.start()
 
     for epoch_i in tqdm(range(epochs)):
         model.train()
         train_loss = 0
-        for batch_i in tqdm(range(no_train_batches)):
+        corrects = 0
+        total = 0
+        for batch_i in tqdm(range(no_train_batches), leave=False):
             filename = join(train_data_path,
                             f'train_E{epoch_i:04}_B{batch_i:04}.npz')
             while not (exists(filename)):
@@ -170,7 +171,7 @@ if __name__ == '__main__':
             while not (read_flag):
                 try:
                     with np.load(filename) as z:
-                        y = z['y'].astype('float32')
+                        y = z['y'].flatten().astype('int64')
                         X = z['X'].astype('float32')
                     read_flag = True
                 except:
@@ -180,27 +181,33 @@ if __name__ == '__main__':
             X, y = torch.tensor(X).to(device), torch.tensor(y).to(device)
 
             # Compute prediction error
-            pred = model(X)
-            loss = 0
-            for k in range(y.shape[1]):
-                loss += lossfn(pred[:, k, :], y[:, k, :])
-            train_loss += loss.item()/w
-
-            del X, y, z
+            pred = model(X).view(-1, num_classes)
+            loss = lossfn(pred, y) * current_batch_size
 
             # Backpropagation
-            loss.backward()
-            optimizer.step()
             optimizer.zero_grad()
+            loss.backward()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+            optimizer.step()
+
+            train_loss += loss.item()
+            # torch.randint(0, num_classes, X.shape[0:2]).to(device)
+            pred_label = torch.argmax(pred, -1)
+            corrects += torch.sum(y == pred_label).item()
+            total += y.numel()
 
             remove(filename)
 
-            if (batch_i + 1) % print_batch == 0:
-                loss, current = loss.item(), (batch_i + 1) * batch_size
+            if ((batch_i + 1) % log_interval == 0) or batch_i == no_train_batches:
+                current= min((batch_i + 1) * batch_size, no_data_train)
+                accuracy = corrects/total
+                lr = scheduler.get_last_lr()[0]
                 tqdm.write(
-                    f"loss: {100*loss/current_batch_size:>7f}  [{current:>04d}/{no_data_train:>04d}]")
-
-        tqdm.write(f'Avg train loss: {train_loss/no_data_train}')
+                    f"| Epoch: {epoch_i:04d} | lr: {lr:08.6f} | loss: {train_loss*batch_size/total:03.6f} | acc: [{corrects:>06d}/{total:>06d}] {100*accuracy:02.3f}% | [{current:>06d}/{no_data_train:>06d}] |")
+        accuracy = corrects/total
+        tqdm.write(80*'=')
+        tqdm.write(
+            f'Avg train loss: {train_loss/no_train_batches:03.6f} Accuracy: {100*accuracy:02.3f}%')
 
         model.eval()
 
@@ -209,6 +216,8 @@ if __name__ == '__main__':
             test_prc.start()
 
         test_loss = 0
+        corrects = 0
+        total = 0
         with torch.no_grad():
             for batch_i in range(no_test_batches):
                 filename = join(test_data_path, f'test_B{batch_i:04}.npz')
@@ -218,7 +227,7 @@ if __name__ == '__main__':
                 while not (read_flag):
                     try:
                         with np.load(filename) as z:
-                            y = z['y'].astype('float32')
+                            y = z['y'].flatten().astype('int64')
                             X = z['X'].astype('float32')
                         read_flag = True
                     except:
@@ -226,13 +235,18 @@ if __name__ == '__main__':
                         # print('Error!')
                 X, y = torch.tensor(X).to(device), torch.tensor(y).to(device)
 
-                pred = model(X)
-                test_loss += lossfn(pred, y).item()/w
-                del X, y
+                pred = model(X).view(-1, num_classes)
+                test_loss += lossfn(pred, y).item() * current_batch_size
 
-        test_loss /= no_data_test
+                pred_label = torch.argmax(pred, -1)
+                corrects += torch.sum(y == pred_label).item()
+                total += y.numel()
+
+        accuracy = corrects/total
+        test_loss /= no_test_batches
+        tqdm.write(80*'=')
         tqdm.write(
-            f"Test Error Epoch {epoch_i:04}: \n Avg loss: {test_loss:>8f} \n")
+            f"Avg Test Error Epoch {epoch_i:04d} Loss: {test_loss:03.6f} Accuracy: {100*accuracy:02.3f}%")
 
         if min_test_loss > test_loss:
             best_epoch = epoch_i
@@ -246,7 +260,9 @@ if __name__ == '__main__':
         last_test_loss = test_loss
 
         # Check for early stopping
-        if epoch_i - progressive_epoch >= patience:
-            tqdm.write(
-                f'Early stopping after {patience} epochs of no significant improvement')
-            break
+        # if epoch_i - progressive_epoch >= patience:
+        #     tqdm.write(
+        #         f'Early stopping after {patience} epochs of no significant improvement')
+        #     break
+        tqdm.write(80*'=')
+        scheduler.step()

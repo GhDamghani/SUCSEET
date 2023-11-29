@@ -20,10 +20,11 @@ class PositionalEncoding(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
         position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        div_term = torch.exp(torch.arange(0, d_model, 2)
+                             * (-math.log(10000.0) / d_model))
         pe = torch.zeros(max_len, 1, d_model)
         pe[:, 0, 0::2] = torch.sin(position * div_term)
-        pe[:, 0, 1::2] = torch.cos(position * div_term[:d_model//2])
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -36,30 +37,39 @@ class PositionalEncoding(nn.Module):
 
 
 class TransformerModel(nn.Module):
-    def __init__(self, d_model, d_out, num_heads=1, num_layers=6, dropout=0.1, dim_feedforward=None):
+    def __init__(self, d_in: int, d_out: int, d_model: int = 256, num_heads: int = 16, dim_feedforward: int = 2048, dropout: int = 0.1, num_layers: int = 6):
         super(TransformerModel, self).__init__()
-        if dim_feedforward == None:
-            dim_feedforward = 4*d_model
+
+        
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model, num_heads, dim_feedforward, dropout=dropout, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer, num_layers)
+
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model, num_heads, dim_feedforward, dropout=dropout, batch_first=True)
+        self.transformer_decoder = nn.TransformerDecoder(
+            decoder_layer, num_layers)
 
         # self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
-
-        encoder_layer =  nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward, dropout=dropout, batch_first=True)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
-
-        decoder_layer =  nn.TransformerDecoderLayer(d_model, num_heads, dim_feedforward, dropout=dropout, batch_first=True)
-        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers)
-
-        # Fully connected layer with softmax
         self.lin = nn.Linear(d_model*(ntokens-1), d_out)
-        self.emb = nn.Linear(d_out, d_model)
+        self.emb_in = nn.Linear(d_in, d_model)
+        self.emb_out = nn.Linear(d_out, d_model)
 
     def forward(self, x1, x2):
-        
-        # x = self.pos_encoder(x)
-        x2 = self.emb(x2)
+
+        x1 = self.emb_in(x1)
+        # x1 = self.pos_encoder(x1)
         x1 = self.transformer_encoder(x1)
-        x = self.transformer_decoder(x2, x1)
-        x = x.view(x.shape[0], -1)
+
+        x2 = self.emb_out(x2)
+        # x2 = self.pos_encoder(x2)
+        # tgt_mask = nn.Transformer.generate_square_subsequent_mask(x2.size(1), device=device)
+        
+        x = self.transformer_decoder(x2, x1) # , tgt_mask=tgt_mask
+        # x = x[:, -1:, :]
+        x = x.view(x.size(0), -1)
         x = self.lin(x)
 
         # Apply softmax to each vector in the output sequence
@@ -72,14 +82,21 @@ if __name__ == '__main__':
     # Example usage
     tokens_no = 100
     batch_size = 16
-    d_model = 128
-    d_out = 20
+    num_classes = 20
 
-    model = TransformerModel(d_model, d_out).to(device)
+    d_model = 192
+    d_in = 127
+    d_out = num_classes
+    num_heads = d_model//16
+    dropout = 0.2
+    num_layers = 4
+    dim_feedforward = d_model*4
+
+    model = TransformerModel(d_in, d_out, d_model, num_heads, dim_feedforward, dropout, num_layers).to(device)
     print(model)
     print('Total number of trainable parameters:', sum(p.numel()
           for p in model.parameters() if p.requires_grad))
-    input_sequence_1 = torch.rand((batch_size, tokens_no, d_model)).to(device)
-    input_sequence_2 = torch.rand((batch_size, tokens_no-1, d_out)).to(device)
-    output_sequence = model(input_sequence_1, input_sequence_2)
-    print(input_sequence_1.shape, output_sequence.shape)
+    X1 = torch.rand((batch_size, tokens_no, d_in)).to(device)
+    X2 = torch.rand((batch_size, tokens_no-1, d_out)).to(device)
+    output_sequence = model(X1, X2)
+    print(X1.shape, output_sequence.shape)

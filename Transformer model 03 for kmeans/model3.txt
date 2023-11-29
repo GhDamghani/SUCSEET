@@ -1,0 +1,214 @@
+import torch
+from torch import nn, Tensor
+import torch.nn.functional as F
+import math
+
+ntokens = 100
+device = (
+    "cuda"
+    if torch.cuda.is_available()
+    else "mps"
+    if torch.backends.mps.is_available()
+    else "cpu"
+)
+
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 200):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2)
+                             * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Arguments:
+            x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
+        """
+        x = x + self.pe[:x.size(0)]
+        return self.dropout(x)
+
+
+class TransformerModel(nn.Module):
+    def __init__(self, d_in: int, d_out: int, d_model: int = 256, num_heads: int = 16, dim_feedforward: int = 2048, dropout: int = 0.1, num_layers: int = 6):
+        super(TransformerModel, self).__init__()
+
+        
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model, num_heads, dim_feedforward, dropout=dropout, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer, num_layers)
+
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model, num_heads, dim_feedforward, dropout=dropout, batch_first=True)
+        self.transformer_decoder = nn.TransformerDecoder(
+            decoder_layer, num_layers)
+
+        # self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
+        self.lin = nn.Linear(d_model*(ntokens-1), d_out)
+        self.emb_in = nn.Linear(d_in, d_model)
+        self.emb_out = nn.Linear(d_out, d_model)
+
+    def forward(self, x1, x2):
+
+        x1 = self.emb_in(x1)
+        # x1 = self.pos_encoder(x1)
+        x1 = self.transformer_encoder(x1)
+
+        x2 = self.emb_out(x2)
+        # x2 = self.pos_encoder(x2)
+        # tgt_mask = nn.Transformer.generate_square_subsequent_mask(x2.size(1), device=device)
+        
+        x = self.transformer_decoder(x2, x1) # , tgt_mask=tgt_mask
+        # x = x[:, -1:, :]
+        x = x.view(x.size(0), -1)
+        x = self.lin(x)
+
+        # Apply softmax to each vector in the output sequence
+        x = nn.functional.softmax(x, dim=-1)
+
+        return x
+
+
+if __name__ == '__main__':
+    # Example usage
+    tokens_no = 100
+    batch_size = 16
+    num_classes = 20
+
+    d_model = 192
+    d_in = 127
+    d_out = num_classes
+    num_heads = d_model//16
+    dropout = 0.2
+    num_layers = 4
+    dim_feedforward = d_model*4
+
+    model = TransformerModel(d_in, d_out, d_model, num_heads, dim_feedforward, dropout, num_layers).to(device)
+    print(model)
+    print('Total number of trainable parameters:', sum(p.numel()
+          for p in model.parameters() if p.requires_grad))
+    X1 = torch.rand((batch_size, tokens_no, d_in)).to(device)
+    X2 = torch.rand((batch_size, tokens_no-1, d_out)).to(device)
+    output_sequence = model(X1, X2)
+    print(X1.shape, output_sequence.shape)
+
+
+TransformerModel(
+  (transformer_encoder): TransformerEncoder(
+    (layers): ModuleList(
+      (0-2): 3 x TransformerEncoderLayer(
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (linear1): Linear(in_features=128, out_features=512, bias=True)
+        (dropout): Dropout(p=0.2, inplace=False)
+        (linear2): Linear(in_features=512, out_features=128, bias=True)
+        (norm1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (norm2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (dropout1): Dropout(p=0.2, inplace=False)
+        (dropout2): Dropout(p=0.2, inplace=False)
+      )
+    )
+  )
+  (transformer_decoder): TransformerDecoder(
+    (layers): ModuleList(
+      (0-2): 3 x TransformerDecoderLayer(
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (multihead_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (linear1): Linear(in_features=128, out_features=512, bias=True)
+        (dropout): Dropout(p=0.2, inplace=False)
+        (linear2): Linear(in_features=512, out_features=128, bias=True)
+        (norm1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (norm2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (norm3): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (dropout1): Dropout(p=0.2, inplace=False)
+        (dropout2): Dropout(p=0.2, inplace=False)
+        (dropout3): Dropout(p=0.2, inplace=False)
+      )
+    )
+  )
+  (lin): Linear(in_features=12672, out_features=20, bias=True)
+  (emb_in): Linear(in_features=127, out_features=128, bias=True)
+  (emb_out): Linear(in_features=20, out_features=128, bias=True)
+)
+lr = 0.0001
+Total number of trainable parameters: 1661076
+| Epoch: 0000 | loss: 41.868961 | acc: [002076/004464] 46.505% | [004464/022297] |
+| Epoch: 0000 | loss: 40.656791 | acc: [004849/008928] 54.312% | [008928/022297] |
+| Epoch: 0000 | loss: 39.780662 | acc: [008036/013392] 60.006% | [013392/022297] |
+| Epoch: 0000 | loss: 39.233788 | acc: [011336/017856] 63.486% | [017856/022297] |
+| Epoch: 0000 | loss: 38.833072 | acc: [014712/022297] 65.982% | [022297/022297] |
+=====================================================================================================
+Avg train loss: 38.820885 Accuracy: 65.982%
+=====================================================================================================
+Avg Test Error Epoch 0000 Loss: 21.081807 Accuracy: 74.118%
+Best Epoch: 0! Model Saved
+=====================================================================================================
+| Epoch: 0001 | loss: 36.839440 | acc: [003492/004464] 78.226% | [004464/022297] |
+| Epoch: 0001 | loss: 36.887142 | acc: [006959/008928] 77.946% | [008928/022297] |
+| Epoch: 0001 | loss: 36.896686 | acc: [010419/013392] 77.800% | [013392/022297] |
+| Epoch: 0001 | loss: 36.896505 | acc: [013885/017856] 77.761% | [017856/022297] |
+| Epoch: 0001 | loss: 36.854472 | acc: [017389/022297] 77.988% | [022297/022297] |
+=====================================================================================================
+Avg train loss: 36.842905 Accuracy: 77.988%
+=====================================================================================================
+Avg Test Error Epoch 0001 Loss: 20.839673 Accuracy: 76.889%
+Best Epoch: 1! Model Saved
+=====================================================================================================
+| Epoch: 0002 | loss: 36.469228 | acc: [003581/004464] 80.220% | [004464/022297] |
+| Epoch: 0002 | loss: 36.464159 | acc: [007168/008928] 80.287% | [008928/022297] |
+| Epoch: 0002 | loss: 36.525229 | acc: [010705/013392] 79.936% | [013392/022297] |
+| Epoch: 0002 | loss: 36.536152 | acc: [014259/017856] 79.856% | [017856/022297] |
+| Epoch: 0002 | loss: 36.532228 | acc: [017805/022297] 79.854% | [022297/022297] |
+=====================================================================================================
+Avg train loss: 36.520762 Accuracy: 79.854%
+=====================================================================================================
+Avg Test Error Epoch 0002 Loss: 20.796171 Accuracy: 77.362%
+Best Epoch: 2! Model Saved
+=====================================================================================================
+| Epoch: 0003 | loss: 36.362658 | acc: [003606/004464] 80.780% | [004464/022297] |
+| Epoch: 0003 | loss: 36.397713 | acc: [007191/008928] 80.544% | [008928/022297] |
+| Epoch: 0003 | loss: 36.400557 | acc: [010785/013392] 80.533% | [013392/022297] |
+| Epoch: 0003 | loss: 36.378839 | acc: [014405/017856] 80.673% | [017856/022297] |
+| Epoch: 0003 | loss: 36.388653 | acc: [017974/022297] 80.612% | [022297/022297] |
+=====================================================================================================
+Avg train loss: 36.377233 Accuracy: 80.612%
+=====================================================================================================
+Avg Test Error Epoch 0003 Loss: 20.821297 Accuracy: 76.943%
+=====================================================================================================
+| Epoch: 0004 | loss: 36.247589 | acc: [003642/004464] 81.586% | [004464/022297] |
+| Epoch: 0004 | loss: 36.245374 | acc: [007279/008928] 81.530% | [008928/022297] |
+| Epoch: 0004 | loss: 36.238303 | acc: [010924/013392] 81.571% | [013392/022297] |
+| Epoch: 0004 | loss: 36.306520 | acc: [014489/017856] 81.144% | [017856/022297] |
+| Epoch: 0004 | loss: 36.297528 | acc: [018106/022297] 81.204% | [022297/022297] |
+=====================================================================================================
+Avg train loss: 36.286136 Accuracy: 81.204%
+=====================================================================================================
+Avg Test Error Epoch 0004 Loss: 20.751006 Accuracy: 77.875%
+Best Epoch: 4! Model Saved
+=====================================================================================================
+| Epoch: 0005 | loss: 36.165502 | acc: [003655/004464] 81.877% | [004464/022297] |
+| Epoch: 0005 | loss: 36.257343 | acc: [007262/008928] 81.340% | [008928/022297] |
+| Epoch: 0005 | loss: 36.216117 | acc: [010932/013392] 81.631% | [013392/022297] |
+| Epoch: 0005 | loss: 36.200594 | acc: [014600/017856] 81.765% | [017856/022297] |
+| Epoch: 0005 | loss: 36.208134 | acc: [018219/022297] 81.711% | [022297/022297] |
+=====================================================================================================
+Avg train loss: 36.196770 Accuracy: 81.711%
+=====================================================================================================
+Avg Test Error Epoch 0005 Loss: 20.789498 Accuracy: 77.416%
+=====================================================================================================
+  1%|▊                                                                                                                                 | 6/1000 [38:10<102:28:40, 371.15s/it] 
+  5%|██████▌                                                                                                                               | 68/1394 [00:17<05:47,

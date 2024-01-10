@@ -4,7 +4,7 @@ import torch
 from os import remove
 from multiprocessing import Process
 from datautils import test_data_gen, get_data
-from icecream import ic
+import numpy as np
 
 
 def train_model(
@@ -48,7 +48,7 @@ def train_model(
             )
 
             # Compute prediction error
-            pred = model_namespace.model(X)
+            pred = model_namespace.model(X, model_namespace.init_class)
             pred = pred.reshape(-1, model_namespace.num_classes)
             loss = model_namespace.lossfn(pred, y)
 
@@ -89,6 +89,7 @@ def evaluate_model(
     preprocess_namespace,
     create_test_files,
     logger,
+    return_data=False,
 ):
     model_namespace.model.eval()
 
@@ -102,6 +103,9 @@ def evaluate_model(
     test_loss = 0
     corrects = 0
     total = 0
+    if return_data:
+        pred_labels = []
+        y_labels = []
     with torch.no_grad():
         for batch_i in range(data_namespace.no_test_batches):
             filename = join(data_namespace.test_data_path, f"test_B{batch_i:04}.npz")
@@ -117,11 +121,23 @@ def evaluate_model(
             pred_label = torch.argmax(pred, -1)
             corrects += torch.sum(y == pred_label).item()
             total += y.numel()
+            if return_data:
+                pred_labels.append(pred_label.to("cpu").numpy())
+                y_labels.append(y.to("cpu").numpy())
 
     test_acc = corrects / total
     test_loss /= total
-    logger(
-        f"Epoch {model_namespace.epoch_i}  Test loss: {test_loss:.5g} Accuracy: {test_acc:02.2%}"
-    )
+    if return_data:
+        logger(
+            f"Evaluation Complete. Test loss: {test_loss:.5g} Accuracy: {test_acc:02.2%}"
+        )
+    else:
+        logger(
+            f"Epoch {model_namespace.epoch_i}  Test loss: {test_loss:.5g} Accuracy: {test_acc:02.2%}"
+        )
+    if return_data:
+        pred_labels = np.concatenate(pred_labels)
+        y_labels = np.concatenate(y_labels)
+        return test_loss, test_acc, pred_labels, y_labels
 
     return test_loss, test_acc

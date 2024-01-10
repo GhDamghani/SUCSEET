@@ -1,109 +1,140 @@
 import numpy as np
 from os.path import join, exists
 from os import listdir
-from model import TransformerModel
 import torch
-from model import TransformerModel
+from model import SpeechDecodingModel
+from train_step import evaluate_model
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 
-num_classes = 20
-w = 100
 
-test_data_path = 'test_data'
-
-
-def get_data(filename):
-    while not (exists(filename)):
-        pass
-    read_flag = False
-    while not (read_flag):
-        try:
-            with np.load(filename) as z:
-                y = z['y'].flatten().astype('int64')
-                X1 = z['X1'].astype('float32')
-                X2 = z['X2'].astype('int64')
-            read_flag = True
-        except:
-            pass
-            # print('Error!')
-
-    X1 = torch.tensor(X1).to(device)
-    X2 = torch.tensor(X2).to(device)
-    X2 = F.one_hot(X2, num_classes).to(torch.float32)
-    y = torch.tensor(y).to(device)
-    return X1, X2, y
-    
-device = (
-    "cuda"
-    if torch.cuda.is_available()
-    else "mps"
-    if torch.backends.mps.is_available()
-    else "cpu"
-)
-d_model = 128
-d_in = 127
-d_out = num_classes
-num_heads = d_model//8
-dropout = 0.2
-num_layers = 4
-dim_feedforward = d_model*4
-
-model = TransformerModel(d_in, d_out, d_model, num_heads, dim_feedforward, dropout, num_layers).to(device)
-model.load_state_dict(torch.load('model.pth'))
-model.eval()
-
-test_loss = 0
-corrects = 0
-total = 0
-y_numpy = []
-pred_numpy = []
-for batch_i in range(len(listdir(test_data_path))):
-    filename = join(test_data_path, f'test_B{batch_i:04}.npz')
-    while not (exists(filename)):
-        pass
-    read_flag = False
-    X1, X2, y = get_data(filename)
-
-    pred = model(X1, X2).view(-1, num_classes)
-
-    pred_label = torch.argmax(pred, -1)
-    corrects += torch.sum(y == pred_label).item()
-    total += y.numel()
-    pred_label = pred_label.cpu().detach().numpy()
-    y = y.cpu().detach().numpy()
-    pred_numpy.append(pred_label)
-    y_numpy.append(y)
-
-y = np.concatenate(y_numpy, 0)
-pred_label = np.concatenate(pred_numpy, 0)
-
-for i in np.random.choice(range(len(y)), 10):
-    print(f'True Label: {y[i]}, Predicted: {pred_label[i]}')
-
-print(f'Accuracy: {100*corrects/total:02.3f}%')
+class Namespace:
+    pass
 
 
+if __name__ == "__main__":
+    device = (
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
+        else "cpu"
+    )
+    window_width = 96
 
-pred_labels, pred_counts = np.unique(pred_label, return_counts=True)
-y_labels, y_counts = np.unique(y, return_counts=True)
+    batch_size = 16
+    num_classes = 2
 
-print(f'Total Pred Counts: {np.sum(pred_counts)}, Total Pred Labels: {np.sum(pred_label)}')
-print(f'Total y Counts: {np.sum(y_counts)}, Total y Labels: {np.sum(y)}')
+    d_model = 128
+    num_heads = 4
+    dim_feedforward = 256
+    num_layers = 1
+    dropout = 0.1
 
-plt.subplot(2, 1, 1)
-plt.stem(pred_labels, pred_counts, linefmt='-', markerfmt='o', basefmt='k-')
-plt.xticks(range(num_classes))
-plt.xlabel('Labels')
-plt.ylabel('Freq')
-plt.title('Histogram of Predicted Output for test data')
+    init_class = 1
 
-plt.subplot(2, 1, 2)
-plt.stem(y_labels, y_counts, linefmt='-', markerfmt='o', basefmt='k-')
-plt.xticks(range(num_classes))
-plt.xlabel('Labels')
-plt.ylabel('Freq')
-plt.title('Histogram of True Output for test data')
+    model = SpeechDecodingModel(
+        d_model, num_classes, num_heads, dropout, num_layers, dim_feedforward
+    ).to(device)
 
-plt.tight_layout()
-plt.show()
+    print(model)
+    model.load_state_dict(torch.load("model.pth"))
+
+    model_namespace = Namespace()
+    model_namespace.model = model
+    model_namespace.device = device
+    model_namespace.num_classes = num_classes
+    model_namespace.init_class = init_class
+    model_namespace.lossfn = torch.nn.CrossEntropyLoss(reduction="sum")
+    data_namespace = Namespace()
+    data_namespace.test_data_path = "test_data"
+    data_namespace.no_test_batches = len(listdir(data_namespace.test_data_path))
+    preprocess_namespace = Namespace()
+    create_test_files = False
+    logger = print
+
+    test_loss, test_acc, pred_labels, y_labels = evaluate_model(
+        model_namespace,
+        data_namespace,
+        preprocess_namespace,
+        create_test_files,
+        logger,
+        True,
+    )
+
+    pred_labels_uniques, pred_counts = np.unique(pred_labels, return_counts=True)
+    labels, y_hist = np.unique(y_labels, return_counts=True)
+    pred_hist = np.zeros(num_classes)
+    pred_hist[pred_labels_uniques] = pred_counts
+    total = np.sum(y_hist)
+
+    pred_hist = pred_hist / total
+    y_hist = y_hist / total
+
+    max_plot = max(pred_hist.max(), y_hist.max())
+
+    print(f"Total y Counts: {total}")
+
+    y_labels_seq = y_labels.reshape(-1, window_width)
+    pred_labels_seq = pred_labels.reshape(-1, window_width)
+
+    np.random.seed(234)  # Reproducibility
+    no_samples = 3
+    samples_ind = np.random.choice(
+        np.arange(0, y_labels_seq.shape[0]), no_samples, replace=False
+    )
+    labels_seq_sample = y_labels_seq[samples_ind]
+    pred_labels_seq_sample = pred_labels_seq[samples_ind]
+    """ no_disturbance = window_width // 10
+    pred_labels_seq_sample = labels_seq_sample.copy()
+    np.random.seed(2834)  # Reproducibility
+    disturbance = np.random.choice(
+        np.arange(0, window_width), (no_samples, no_disturbance), replace=True
+    )
+    for i in range(no_samples):
+        for j in range(no_disturbance):
+            pred_labels_seq_sample[i, disturbance[i, j]] = np.random.randint(
+                0, num_classes
+            ) """
+
+    plt.figure()
+    for i in range(no_samples):
+        plt.subplot(no_samples, 1, i + 1)
+        plt.plot(
+            pred_labels_seq_sample[i],
+            marker="o",
+            linestyle="-",
+            color="#8B0000",
+            label="Predicted",
+            alpha=0.5,
+        )
+        plt.plot(
+            labels_seq_sample[i],
+            linestyle="-",
+            marker="o",
+            color="#AAFF00",
+            label="True",
+            alpha=0.5,
+        )
+        plt.legend(loc="upper right")
+
+    plt.figure()
+
+    plt.subplot(2, 1, 1)
+    plt.stem(labels, pred_hist, linefmt="-", markerfmt="o", basefmt="k-")
+    plt.xticks(range(num_classes))
+    plt.xlabel("Labels")
+    plt.ylabel("Freq")
+    plt.ylim(0, max_plot)
+    plt.title("Histogram of Predicted Output for test data")
+
+    plt.subplot(2, 1, 2)
+    plt.stem(labels, y_hist, linefmt="-", markerfmt="o", basefmt="k-")
+    plt.xticks(range(num_classes))
+    plt.xlabel("Labels")
+    plt.ylabel("Freq")
+    plt.ylim(0, max_plot)
+    plt.title("Histogram of True Output for test data")
+
+    plt.tight_layout()
+    plt.show()

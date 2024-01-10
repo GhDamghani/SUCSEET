@@ -125,7 +125,8 @@ class DecoderModel(nn.Module):
         x = self.scaled_positional_encoding(x)
         x = self.decoder(x, memory, memory_mask=self.mask, memory_is_causal=True)
         x = self.linear(x[:, -1:, :])
-        x = F.sigmoid(x)
+        # x = F.sigmoid(x)
+        x = F.relu(x)
         x = self.softmax(x)
         return x
 

@@ -17,10 +17,6 @@ import logging
 from functools import partial
 
 
-# TODO: Logging
-# TODO: New Model
-
-
 def logger_fcn(s, logger, right=None):
     console_width = 80
     s_len = len(s)
@@ -51,9 +47,9 @@ if __name__ == "__main__":
     freeze_support()
 
     #### Initialize ####
-    # checkpointfile = "checkpoint_2024-01-04_16-58-05"
+    # checkpointfile = "checkpoint_2024-01-10_15-27-39"
     checkpointfile = None
-    autosave_seconds = 600
+    autosave_seconds = 5 * 60
 
     device = (
         "cuda"
@@ -74,7 +70,7 @@ if __name__ == "__main__":
     melSpec = np.load(join(path_input, f"{participant}_spec.npy"))
     feat = np.load(join(path_input, f"{participant}_feat.npy"))
     kmeans = joblib.load(join(kmeans_folder, "kmeans.joblib"))
-    num_classes = 20
+    num_classes = 2
 
     no_samples = melSpec.shape[0]
     window_width = 96
@@ -97,7 +93,7 @@ if __name__ == "__main__":
     d_model = 128
     num_heads = 4
     dim_feedforward = 256
-    num_layers = 3
+    num_layers = 1
     dropout = 0.1
 
     model = SpeechDecodingModel(
@@ -108,18 +104,23 @@ if __name__ == "__main__":
         "Total number of trainable parameters:",
         sum(p.numel() for p in model.parameters() if p.requires_grad),
     )
-    lr = 1e-4
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    lr = 1e-5
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=lr,
+    )
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 20.0, gamma=0.95)
-    lossfn = torch.nn.CrossEntropyLoss(reduction="sum")
+    lossfn = torch.nn.CrossEntropyLoss(reduction="sum", label_smoothing=0.1)
+    init_class = 1
 
     #### Logger ####
     logging_file = "train.log"
+    filemode = "w" if checkpointfile is None else "a"
 
     logger = logging.getLogger(__name__)
     logging.basicConfig(
         filename=logging_file,
-        filemode="w",
+        filemode=filemode,
         format="%(asctime)s %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         encoding="utf-8",
@@ -142,7 +143,7 @@ if __name__ == "__main__":
     best_epoch = 0
     progressive_epoch = 0
     patience = 5
-    log_interval = int(np.round_(no_train_batches / 5))
+    log_interval = int(np.round(no_train_batches / 10))
 
     data_namespace = Namespace()
     data_namespace.train_data_path = train_data_path
@@ -197,6 +198,7 @@ if __name__ == "__main__":
     model_namespace.patience = model_state.patience
     model_namespace.log_interval = log_interval
     model_namespace.num_classes = num_classes
+    model_namespace.init_class = init_class
     model_namespace.device = device
     model_namespace.epoch_i = model_state.epoch_i
     model_namespace.batch_i = model_state.batch_i

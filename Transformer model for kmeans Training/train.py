@@ -70,7 +70,7 @@ if __name__ == "__main__":
     melSpec = np.load(join(path_input, f"{participant}_spec.npy"))
     feat = np.load(join(path_input, f"{participant}_feat.npy"))
     kmeans = joblib.load(join(kmeans_folder, "kmeans.joblib"))
-    num_classes = 2
+    num_classes = 3
 
     no_samples = melSpec.shape[0]
     window_width = 96

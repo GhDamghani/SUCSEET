@@ -115,7 +115,9 @@ def evaluate_model(
             )
 
             # Compute prediction error
-            pred = model_namespace.model(X).reshape(-1, model_namespace.num_classes)
+            pred = model_namespace.model(X, model_namespace.init_class).reshape(
+                -1, model_namespace.num_classes
+            )
             test_loss += model_namespace.lossfn(pred, y).item()
 
             pred_label = torch.argmax(pred, -1)

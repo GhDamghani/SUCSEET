@@ -23,7 +23,7 @@ if __name__ == "__main__":
     window_width = 96
 
     batch_size = 16
-    num_classes = 2
+    num_classes = 3
 
     d_model = 128
     num_heads = 4

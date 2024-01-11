@@ -13,7 +13,7 @@ melSpec = np.load(join(path_input, f"{participant}_spec.npy"))
 
 # trainData = slider(melSpec)
 
-kmeans = KMeans(n_clusters=2, random_state=0, n_init="auto")
+kmeans = KMeans(n_clusters=3, random_state=0, n_init="auto")
 dists = kmeans.fit_transform(melSpec)
 lbl = kmeans.labels_
 # keep=[]
@@ -31,3 +31,4 @@ plt.title("Histogram of True Output for the whole data")
 plt.tight_layout()
 
 joblib.dump(kmeans, "kmeans.joblib")
+plt.show()

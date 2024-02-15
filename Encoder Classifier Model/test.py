@@ -1,18 +1,21 @@
 import argparse
 import torch
-import data_loader.data_loaders as module_data
 import model.loss as module_loss
 from model.model import SpeechDecodingModel
 from utils import prepare_device, read_json
-from os.path import join
-import joblib
+from os.path import join, exists
+from os import makedirs
+import shutil
 import numpy as np
 from data_loader.data_loaders import get_train_val_datasets
 from trainer import Trainer
 import matplotlib.pyplot as plt
+import scipy.io.wavfile as wavfile
+from reconstruction_minimal import createAudio
+
 
 # fix random seeds for reproducibility
-SEED = 1379
+SEED = 13791
 torch.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -27,8 +30,15 @@ def main(config):
     kmeans_folder = config.kmeans_folder
     path_input = join(kmeans_folder, "features")
     participant = "sub-06"
-    cluster = np.load(join(path_input, f"{participant}_kmeans.npy"))
+    cluster = np.load(join(path_input, f"{participant}_melSpec_cluster.npy"))
+    cluster_centers = np.load(
+        join(path_input, f"{participant}_melSpec_cluster_centers.npy")
+    )
     feat = np.load(join(path_input, f"{participant}_feat.npy")).astype(np.float32)
+
+    center = lambda x: cluster_centers[x]
+
+    audiosr = 16000
 
     # prepare for (multi-device) GPU training
     device, device_ids = prepare_device(config.n_gpu)
@@ -51,6 +61,7 @@ def main(config):
         config.encoder_prenet_out_d,
         config.d_model,
         config.num_heads,
+        config.num_layers,
         config.dim_feedforward,
         config.num_classes,
         config.dropout,
@@ -107,10 +118,40 @@ def main(config):
     )
     labels_seq_sample = y_labels_seq[samples_ind]
     pred_labels_seq_sample = pred_labels_seq[samples_ind]
+
+    out_path = "test_samples"
+    if exists(out_path):
+        shutil.rmtree(out_path)
+    makedirs(out_path)
     plt.figure()
     for i in range(no_samples // 4):
         for j in range(4):
             ind = i * 4 + j
+            center_melSpec_pred = np.stack(
+                tuple(center(x) for x in pred_labels_seq_sample[ind]), axis=0
+            )
+            center_audio_pred = createAudio(center_melSpec_pred, audiosr)
+            wavfile.write(
+                join(
+                    out_path,
+                    f"{participant}_{ind:03d}_cluster_center_reconstructed_pred.wav",
+                ),
+                int(audiosr),
+                center_audio_pred,
+            )
+            center_melSpec_true = np.stack(
+                tuple(center(x) for x in labels_seq_sample[ind]), axis=0
+            )
+            center_audio_true = createAudio(center_melSpec_true, audiosr)
+            wavfile.write(
+                join(
+                    out_path,
+                    f"{participant}_{ind:03d}_cluster_center_reconstructed_true.wav",
+                ),
+                int(audiosr),
+                center_audio_true,
+            )
+
             plt.subplot(4, 2, ind + 1)
             plt.plot(
                 pred_labels_seq_sample[ind],

@@ -43,24 +43,26 @@ class EncoderPrenetMLP(nn.Module):
         return x
 
 
-class ScaledPositionalEncoding(nn.Module):
-    def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(ScaledPositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        self.scale_param = nn.Parameter(torch.ones(1))
+class PositionalEncoding(nn.Module):
+    "Implement the PE function."
 
+    def __init__(self, d_model, dropout, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        # Compute the positional encodings once in log space.
         pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        position = torch.arange(0, max_len).unsqueeze(1)
         div_term = torch.exp(
-            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+            torch.arange(0, d_model, 2) * -(math.log(10000.0) / d_model)
         )
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
+        pe = pe.unsqueeze(0)
         self.register_buffer("pe", pe)
 
     def forward(self, x):
-        x = x + self.scale_param * self.pe[: x.size(0), :]
+        x = x + self.pe[:, : x.size(1)].requires_grad_(False)
         return self.dropout(x)
 
 
@@ -68,7 +70,7 @@ class EncoderModel(nn.Module):
     def __init__(self, d_model, num_heads, dropout, num_layers, dim_feedforward):
         super(EncoderModel, self).__init__()
 
-        self.scaled_positional_encoding = ScaledPositionalEncoding(d_model, dropout)
+        self.pe = PositionalEncoding(d_model, dropout)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model, num_heads, dim_feedforward, dropout, batch_first=True
@@ -76,6 +78,6 @@ class EncoderModel(nn.Module):
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers)
 
     def forward(self, x):
-        x = self.scaled_positional_encoding(x)
+        x = self.pe(x)
         x = self.encoder(x)
         return x

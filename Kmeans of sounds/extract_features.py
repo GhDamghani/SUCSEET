@@ -208,7 +208,7 @@ if __name__ == "__main__":
     participants = pd.read_csv(
         os.path.join(path_bids, "participants.tsv"), delimiter="\t"
     )
-    for p_id, participant in enumerate(participants["participant_id"][5:6]):
+    for p_id, participant in enumerate(participants["participant_id"]):
 
         # Load data
         io = NWBHDF5IO(

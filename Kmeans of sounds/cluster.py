@@ -4,10 +4,6 @@ from os.path import join
 import joblib
 import matplotlib.pyplot as plt
 import scipy.io.wavfile as wavfile
-
-import sys
-
-sys.path.append(join("..", "SingleWordProductionDutch-main"))
 from reconstruction_minimal import createAudio
 
 # from slider import slider

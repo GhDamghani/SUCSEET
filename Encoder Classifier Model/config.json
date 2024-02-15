@@ -1,15 +1,15 @@
 {
     "name": "MLPSpeechDecodingModel",
     "n_gpu": 1,
-    "encoder_prenet_out_d": 256,
-    "d_model": 256,
-    "num_heads":8,
-    "num_layers": 3,
-    "dim_feedforward":512,
+    "encoder_prenet_out_d": 512,
+    "enc_hidden_dim": 128,
+    "d_model": 512,
+    "num_heads":4,
+    "num_layers": 2,
+    "dim_feedforward":1024,
     "num_classes": 20,
-    "dropout": 0.2,
-    "enc_hidden_dim": 256,
-    "timepoints": 96,
+    "dropout": 0.1,
+    "timepoints": 100,
     "num_eeg_channels": 127,
     "epochs": 200,
     "batch_size": 16,
@@ -21,9 +21,9 @@
     "kmeans_folder": "..\\Kmeans of sounds",
 
     "optimizer": {
-        "lr": 0.0001,
+        "lr": 1E-4,
         "weight_decay": 0.01,
-        "amsgrad": true
+        "amsgrad": false
     },
     "lr_scheduler": {
         "step_size": 50,

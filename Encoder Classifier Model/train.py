@@ -13,7 +13,7 @@ from multiprocessing import freeze_support
 
 
 # fix random seeds for reproducibility
-SEED = 1379
+SEED = 13791
 torch.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -71,7 +71,12 @@ def main(config):
 
     LDA_acc = get_LDA_accuracy(train_dataset, val_dataset)
     logger("Starting", right="=")
-    logger(f"LDA accuracy: {LDA_acc:5.2%}")
+    logger(f"LDA accuracy              : {LDA_acc:5.2%}")
+    logger(f"Train dataset length      : {len(train_dataset):5d}")
+    logger(f"Validation dataset length : {len(val_dataset):5d}")
+    histogram_weights = np.load(join(kmeans_folder, "histogram.npy"))
+    histogram_weights = histogram_weights / np.sum(histogram_weights)
+    logger(f"Max histogram weight      : {np.max(histogram_weights):5.2%}")
 
     if len(device_ids) > 1:
         model = torch.nn.DataParallel(model, device_ids=device_ids)

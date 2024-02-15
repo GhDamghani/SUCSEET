@@ -44,11 +44,13 @@ class SpeechDecodingModel(nn.Module):
             d_model, num_heads, dropout, num_layers, dim_feedforward
         )
         self.dropout = nn.Dropout(dropout)
-        self.clf = nn.Linear(encoder_prenet_out_d, num_classes)
+        self.clf = nn.Sequential(
+            nn.Linear(encoder_prenet_out_d, num_classes), nn.LogSoftmax(dim=-1)
+        )
 
     def forward(self, x):
+        # x = self.dropout(x)
         x = self.encoder_prenet_mlp(x)
-        # x = self.pe(x)
         x = self.encoder(x)
         return self.clf(x)
 

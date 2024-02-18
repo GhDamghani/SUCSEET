@@ -8,12 +8,11 @@ from trainer import Trainer
 from utils import prepare_device, read_json
 from logger import get_logger
 from os.path import join
-import joblib
 from multiprocessing import freeze_support
 
 
 # fix random seeds for reproducibility
-SEED = 13791
+SEED = 1379
 torch.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -60,7 +59,8 @@ def main(config):
         config.num_layers,
         config.dim_feedforward,
         config.num_classes,
-        config.dropout,
+        config.dropout_prenet,
+        config.dropout_encoder,
         config.enc_hidden_dim,
         config.timepoints,
         config.num_eeg_channels,
@@ -103,6 +103,7 @@ def main(config):
         val_dataset,
         config.batch_size,
         config.epochs,
+        config.patience,
         logger,
         config.autosave_seconds,
         resume,

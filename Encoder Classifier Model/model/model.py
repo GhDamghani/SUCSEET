@@ -1,3 +1,4 @@
+from torch import tensor
 import torch.nn as nn
 import torch.nn.functional as F
 from .layers import EncoderPrenetMLP, EncoderModel
@@ -26,7 +27,8 @@ class SpeechDecodingModel(nn.Module):
         num_layers,
         dim_feedforward,
         num_classes,
-        dropout,
+        dropout_prenet,
+        dropout_encoder,
         enc_hidden_dim,
         timepoints,
         num_eeg_channels,
@@ -41,17 +43,18 @@ class SpeechDecodingModel(nn.Module):
         )
         # self.pe = ScaledPositionalEncoding(d_model, dropout)
         self.encoder = EncoderModel(
-            d_model, num_heads, dropout, num_layers, dim_feedforward
+            d_model, num_heads, dropout_encoder, num_layers, dim_feedforward
         )
-        self.dropout = nn.Dropout(dropout)
+        self.dropout_prenet = nn.Dropout(dropout_prenet)
         self.clf = nn.Sequential(
             nn.Linear(encoder_prenet_out_d, num_classes), nn.LogSoftmax(dim=-1)
         )
+        self.scalar_factor = nn.Parameter(tensor([1.0]))
 
     def forward(self, x):
-        # x = self.dropout(x)
+        x = self.dropout_prenet(x)
         x = self.encoder_prenet_mlp(x)
-        x = self.encoder(x)
+        # x = self.encoder(x)
         return self.clf(x)
 
     def __str__(self, batch_size=1):

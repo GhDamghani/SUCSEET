@@ -16,6 +16,7 @@ class Trainer:
         val_dataset,
         batch_size,
         epochs,
+        patience,
         logger,
         autosave_seconds,
         resume=False,
@@ -39,7 +40,7 @@ class Trainer:
             )
             self.optimizer = optimizer
             self.scheduler = scheduler
-            self.patience = self.epochs
+            self.patience = patience
             self.autosave_seconds = autosave_seconds
         self.resume = resume
         if resume:
@@ -173,7 +174,7 @@ class Trainer:
                 self._train()
                 self.validate()
 
-                if self.last_val_loss >= self.val_loss:
+                if self.last_val_loss >= self.lowest_val_loss:
                     self.logger(f"Progressive Epoch!")
                     self.progressive_epoch = epoch_i
                 else:

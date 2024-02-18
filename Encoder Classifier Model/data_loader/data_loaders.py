@@ -38,14 +38,14 @@ class MyIterableDataset:
     def preprocess(self, i, disturb=False):
         x1 = self.feat[i : i + self.timepoints]
         # x1[:, sw[0]], x1[:, sw[1]] = x1[:, sw[1]], x1[:, sw[0]]
-        if disturb:
-            x1 = x1 * np.random.uniform(0.8, 1.2, (1, self.num_eeg_channels)).astype(
-                np.float32
-            ) + np.random.normal(
-                0, 0.8, (self.timepoints, self.num_eeg_channels)
-            ).astype(
-                np.float32
-            )
+        # if disturb:
+        #     x1 = x1 * np.random.uniform(0.8, 1.2, (1, self.num_eeg_channels)).astype(
+        #         np.float32
+        #     ) + np.random.normal(
+        #         0, 0.8, (self.timepoints, self.num_eeg_channels)
+        #     ).astype(
+        #         np.float32
+        #     )
 
         y1 = self.cluster[i : i + self.timepoints]
         return x1, y1

@@ -9,13 +9,12 @@ class Checkpoint:
     kwargs = {
         "best_epoch",
         "lowest_val_loss",
-        "progressive_epoch",
-        "last_val_loss",
         "epoch_i",
         "batch_i",
         "train_loss",
         "train_corrects",
         "train_total",
+        "lr",
     }
 
     def __init__(self):

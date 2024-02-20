@@ -1,84 +1,47 @@
-import argparse
 import torch
-import model.loss as module_loss
-from model.model import SpeechDecodingModel
-from utils import prepare_device, read_json
-from os.path import join, exists
-from os import makedirs
-import shutil
-import numpy as np
-from data_loader.data_loaders import get_train_val_datasets
-from trainer import Trainer
+from model_module import SpeechDecodingModel
+from model_loss import criterion
 import matplotlib.pyplot as plt
-import scipy.io.wavfile as wavfile
-from reconstruction_minimal import createAudio
+import numpy as np
+import data
+from trainer import Trainer
 
 
-# fix random seeds for reproducibility
-SEED = 13791
-torch.manual_seed(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-np.random.seed(SEED)
+def main(config, model_path):
 
+    torch.manual_seed(config.SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(config.SEED)
 
-def main(config):
-    model_path = config.file
-    config = read_json(config.config)
-    config = argparse.Namespace(**config)
-
-    kmeans_folder = config.kmeans_folder
-    path_input = join(kmeans_folder, "features")
-    participant = "sub-06"
-    cluster = np.load(join(path_input, f"{participant}_melSpec_cluster.npy"))
-    cluster_centers = np.load(
-        join(path_input, f"{participant}_melSpec_cluster_centers.npy")
-    )
-    feat = np.load(join(path_input, f"{participant}_feat.npy")).astype(np.float32)
-
-    center = lambda x: cluster_centers[x]
-
-    audiosr = 16000
-
-    # prepare for (multi-device) GPU training
-    device, device_ids = prepare_device(config.n_gpu)
-
-    # setup data_loader instances
-    _, val_dataset = get_train_val_datasets(
-        feat,
-        cluster,
+    _, val_dataset = data.get_train_val_datasets(
+        config.feat,
+        config.cluster,
         config.timepoints,
         config.num_eeg_channels,
-        config.batch_size,
-        config.epochs,
-        device,
-        config.validation_ratio,
-        config.p_sample,
+        config.BATCH_SIZE,
+        config.EPOCHS,
+        config.DEVICE,
+        config.VALIDATION_RATIO,
+        config.P_SAMPLE,
     )
 
-    # build model architecture, then print to console
     model = SpeechDecodingModel(
-        config.encoder_prenet_out_d,
         config.d_model,
         config.num_heads,
-        config.num_layers,
         config.dim_feedforward,
+        config.num_layers,
         config.num_classes,
-        config.dropout_prenet,
-        config.dropout_encoder,
-        config.enc_hidden_dim,
         config.timepoints,
         config.num_eeg_channels,
+        config.dropout_prenet,
+        config.dropout_encoder,
+        config.dropout_clf,
     )
-
-    model = model.to(device)
-
-    if len(device_ids) > 1:
-        model = torch.nn.DataParallel(model, device_ids=device_ids)
-
+    model.to(config.DEVICE)
     model.load_state_dict(torch.load(model_path))
 
-    criterion = module_loss.lossfn(kmeans_folder, config.num_classes)
+    criterion = config.criterion(config.kmeans_folder, config.num_classes)
 
     trainer = Trainer(
         model,
@@ -87,13 +50,12 @@ def main(config):
         None,
         None,
         val_dataset,
-        config.batch_size,
-        config.epochs,
+        config.BATCH_SIZE,
+        config.EPOCHS,
         None,
         None,
         None,
     )
-
     pred_labels, y_labels = trainer.validate(return_data=True)
 
     pred_labels_uniques, pred_counts = np.unique(pred_labels, return_counts=True)
@@ -108,71 +70,6 @@ def main(config):
     max_plot = max(pred_hist.max(), y_hist.max())
 
     print(f"Total y Counts: {total}")
-
-    # y_labels_seq = y_labels.reshape(-1, 1)
-    # pred_labels_seq = pred_labels.reshape(-1, 1)
-
-    # np.random.seed(43450)  # Reproducibility
-    # no_samples = 8
-    # samples_ind = np.random.choice(
-    #     np.arange(0, y_labels_seq.shape[0]), no_samples, replace=False
-    # )
-    # # labels_seq_sample = y_labels_seq[samples_ind]
-    # pred_labels_seq_sample = pred_labels_seq[samples_ind]
-
-    # out_path = "test_samples"
-    # if exists(out_path):
-    #     shutil.rmtree(out_path)
-    # makedirs(out_path)
-    # plt.figure()
-    # for i in range(no_samples // 4):
-    #     for j in range(4):
-    #         ind = i * 4 + j
-    #         center_melSpec_pred = np.stack(
-    #             tuple(center(x) for x in pred_labels_seq_sample[ind]), axis=0
-    #         )
-    #         center_audio_pred = createAudio(center_melSpec_pred, audiosr)
-    #         wavfile.write(
-    #             join(
-    #                 out_path,
-    #                 f"{participant}_{ind:03d}_cluster_center_reconstructed_pred.wav",
-    #             ),
-    #             int(audiosr),
-    #             center_audio_pred,
-    #         )
-    #         center_melSpec_true = np.stack(
-    #             tuple(center(x) for x in labels_seq_sample[ind]), axis=0
-    #         )
-    #         center_audio_true = createAudio(center_melSpec_true, audiosr)
-    #         wavfile.write(
-    #             join(
-    #                 out_path,
-    #                 f"{participant}_{ind:03d}_cluster_center_reconstructed_true.wav",
-    #             ),
-    #             int(audiosr),
-    #             center_audio_true,
-    #         )
-
-    #         plt.subplot(4, 2, ind + 1)
-    #         plt.plot(
-    #             pred_labels_seq_sample[ind],
-    #             marker="o",
-    #             linestyle="-",
-    #             color="#8B0000",
-    #             label="Predicted",
-    #             alpha=0.5,
-    #         )
-    #         plt.plot(
-    #             labels_seq_sample[ind],
-    #             linestyle="-",
-    #             marker="o",
-    #             color="#AAFF00",
-    #             label="True",
-    #             alpha=0.5,
-    #         )
-    #         plt.ylim(-0.5, config.num_classes - 0.5)
-    #         if ind == 0:
-    #             plt.legend(loc="upper right")
 
     plt.figure()
 
@@ -197,20 +94,6 @@ def main(config):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="PyTorch Model Testing")
-    parser.add_argument(
-        "-c",
-        "--config",
-        default="config.json",
-        type=str,
-        help="config file path (default: config.json)",
-    )
-    parser.add_argument(
-        "-f",
-        "--file",
-        default="model.pth",
-        type=str,
-        help="Saved model file path (default: model.pth)",
-    )
-    config = parser.parse_args()
-    main(config)
+    import config
+
+    main(config, "model.pth")

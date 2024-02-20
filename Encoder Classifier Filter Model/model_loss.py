@@ -11,7 +11,7 @@ def CEL_weights_class_balanced(samples_per_class, num_classes, beta=0.999):
     return weights
 
 
-def lossfn(kmeans_folder, num_classes, weights=True):
+def criterion(kmeans_folder, num_classes, weights=True):
     if weights:
         histogram_weights = np.load(join(kmeans_folder, "histogram.npy"))
         histogram_weights = CEL_weights_class_balanced(histogram_weights, num_classes)

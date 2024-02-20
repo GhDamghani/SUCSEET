@@ -16,11 +16,11 @@ class Trainer:
         val_dataset,
         batch_size,
         epochs,
-        patience,
         logger,
         autosave_seconds,
         resume=False,
         checkpointfile=None,
+        log_times=10,
     ) -> None:
         self.model = model
         self.batch_size = batch_size
@@ -35,12 +35,14 @@ class Trainer:
 
         if not self.test_mode:
             self.logger = logger
-            self.log_interval = int(
-                round(len(self.train_dataset) / self.batch_size / 10)
+            self.log_interval = (
+                int(round(len(self.train_dataset) / self.batch_size / log_times))
+                if log_times is not None
+                else len(self.train_dataset) + 1
             )
             self.optimizer = optimizer
             self.scheduler = scheduler
-            self.patience = patience
+            self.patience = self.epochs
             self.autosave_seconds = autosave_seconds
         self.resume = resume
         if resume:
@@ -52,18 +54,12 @@ class Trainer:
             self.batch_i = 0
 
             if not self.test_mode:
-                self.last_val_loss = float("inf")
                 self.lowest_val_loss = float("inf")
                 self.best_epoch = 0
-                self.progressive_epoch = 0
                 self.train_loss = 0
-                self.train_corrects = 0
-                self.train_total = 0
 
     def step(self, X, y):
-        pred = self.model(X)
-        pred = pred.reshape(-1, self.model.num_classes).cpu()
-        y = y.reshape(-1)
+        pred = self.model(X).cpu()
         loss = self.criterion(pred, y)
         corrects = torch.sum(torch.argmax(pred, -1) == y).item()
         return pred, loss, corrects
@@ -76,6 +72,9 @@ class Trainer:
             self.train_loss = 0
             self.train_corrects = 0
             self.train_total = 0
+            interval_loss = 0
+            interval_corrects = 0
+            interval_total = 0
         iterator = self.train_dataset
         self.train_dataset.epoch_i = self.epoch_i
         with open("tqdm_batch.log", "w") as file:
@@ -92,32 +91,43 @@ class Trainer:
                         self.checkpoint.save(self)
                 _, loss, corrects = self.step(X, y)
                 self.optimizer.zero_grad()
-                self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
 
-                self.train_loss += loss.item() * y.numel()
+                if torch.isnan(torch.tensor(loss.item())).item():
+                    pass
+
+                loss_ = loss.item() * y.numel()
+                interval_loss += loss_
+                self.train_loss += loss_
                 self.train_corrects += corrects
+                interval_corrects += corrects
                 self.train_total += y.numel()
+                interval_total += y.numel()
+
+                if torch.isnan(torch.tensor(self.train_loss)).item():
+                    pass
 
                 if (self.batch_i + 1) % self.log_interval == 0:
-                    accuracy = self.train_corrects / self.train_total
-                    loss_str = f"Loss: {self.train_loss/self.train_total:.5g}"
+                    accuracy = interval_corrects / interval_total
+                    loss_str = f"Loss: {interval_loss/interval_total:.5g}"
                     acc_str = f"Accuracy: {accuracy:7.2%}"
                     left_str = f"{loss_str:12} | {acc_str:12}"
                     right_str = str(progress_bar)
                     self.logger(left_str, right=right_str)
-            accuracy = self.train_corrects / self.train_total
+                    interval_loss = 0
+                    interval_corrects = 0
+                    interval_total = 0
             self.logger(
-                f"Epoch {self.epoch_i} Train loss: {self.train_loss/self.train_total:.5g} Accuracy: {accuracy:02.2%}"
+                f"Epoch {self.epoch_i} Train loss: {self.train_loss/self.train_total:.5g}"
             )
         self.resume = False
 
     def validate(self, return_data=False):
         self.model.eval()
         self.val_loss = 0
-        corrects = 0
         total = 0
+        corrects = 0
         if return_data:
             pred_labels = []
             y_labels = []
@@ -128,8 +138,7 @@ class Trainer:
                 corrects += corrects_
                 total += y.numel()
                 if return_data:
-                    pred_label = torch.argmax(pred, -1)
-                    pred_labels.append(pred_label.cpu().numpy())
+                    pred_labels.append(torch.argmax(pred, -1).numpy())
                     y_labels.append(y.cpu().numpy())
         self.val_acc = corrects / total
         self.val_loss /= total
@@ -156,12 +165,14 @@ class Trainer:
             args=(self.autosave_seconds, autosave_sender),
         )
         autosave_prc.start()
+        self.lr = self.optimizer.param_groups[0]["lr"]
         with open("tqdm_epoch.log", "w") as file:
             progress_bar = tqdm(
                 range(self.epoch_i, self.train_dataset.epochs),
                 file=file,
                 bar_format="[{elapsed}<{remaining}, " "{rate_fmt}{postfix}]",
             )
+
             for epoch_i in progress_bar:
                 self.epoch_i = epoch_i
 
@@ -174,40 +185,30 @@ class Trainer:
                 self._train()
                 self.validate()
 
-                # if self.last_val_loss >= self.lowest_val_loss:
-                #     self.logger(f"Progressive Epoch!")
-                #     self.progressive_epoch = epoch_i
-                # else:
-                #     self.logger(f"Not a Progressive Epoch!")
-                # self.last_val_loss = self.val_loss
-
                 if self.val_loss < self.lowest_val_loss:
                     self.best_epoch = epoch_i
                     self.lowest_val_loss = self.val_loss
-                    self.progressive_epoch = epoch_i
                     torch.save(self.model.state_dict(), "model.pth")
                     self.logger("*")
                     self.logger(f"Best Epoch! Model Saved", right="*")
                     self.logger("*")
                 else:
                     self.logger(f"Not a Progressive Epoch!")
-                if self.epoch_i - self.progressive_epoch >= self.patience:
+                if self.epoch_i - self.best_epoch >= self.patience:
                     self.logger("&")
                     self.logger(
-                        f"Early stopping after {self.patience} epochs of no significant improvement"
+                        f"Early stopping after {self.patience} epochs of no new best epoch",
                     )
                     self.logger("&")
                     break
 
                 #### Learning Rate Scheduler ####
 
-                self.scheduler.step()
-                if (
-                    self.scheduler.get_last_lr()[0]
-                    != self.optimizer.state_dict()["param_groups"][0]["lr"]
-                ):
+                self.scheduler.step(self.val_loss)
+                if self.optimizer.param_groups[0]["lr"] != self.lr:
+                    self.lr = self.optimizer.param_groups[0]["lr"]
                     self.logger(
-                        f"New learning rate: {self.scheduler.get_last_lr()[0]:.4g}",
+                        f"New learning rate: {self.lr:.4g}",
                         right=" ",
                     )
                 self.logger("=")

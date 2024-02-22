@@ -12,10 +12,12 @@ import scipy.fftpack
 from pynwb import NWBHDF5IO
 import MelFilterBank as mel
 
+
 # Small helper function to speed up the hilbert transform by extending the length of data to the next power of 2
-hilbert3 = lambda x: scipy.signal.hilbert(
-    x, scipy.fftpack.next_fast_len(len(x)), axis=0
-)[: len(x)]
+def hilbert3(x):
+    return scipy.signal.hilbert(x, scipy.fftpack.next_fast_len(len(x)), axis=0)[
+        : len(x)
+    ]
 
 
 def extractHG(data, sr, windowLength=0.05, frameshift=0.01):
@@ -95,7 +97,8 @@ def stackFeatures(features, modelOrder=4, stepSize=5):
         ef = features[
             i - modelOrder * stepSize : i + modelOrder * stepSize + 1 : stepSize, :
         ]
-        featStacked[fNum, :] = ef.flatten()  # Add 'F' if stacked the same as matlab
+        # Add 'F' if stacked the same as matlab
+        featStacked[fNum, :] = ef.flatten()
     return featStacked
 
 
@@ -200,7 +203,7 @@ if __name__ == "__main__":
     modelOrder = 4
     stepSize = 5
     path_bids = r"../SingleWordProductionDutch-iBIDS"
-    path_output = r"./features"
+    path_output = r"../Dataset_Word"
     participants = pd.read_csv(
         os.path.join(path_bids, "participants.tsv"), delimiter="\t"
     )
@@ -243,7 +246,7 @@ if __name__ == "__main__":
         feat = extractHG(eeg, eeg_sr, windowLength=winL, frameshift=frameshift)
 
         # Stack features
-        feat = stackFeatures(feat, modelOrder=modelOrder, stepSize=stepSize)
+        # feat = stackFeatures(feat,modelOrder=modelOrder,stepSize=stepSize)
 
         # Process Audio
         target_SR = 16000
@@ -273,6 +276,10 @@ if __name__ == "__main__":
             tLen = np.min([melSpec.shape[0], feat.shape[0]])
             melSpec = melSpec[:tLen, :]
             feat = feat[:tLen, :]
+
+        melSpec_wave = scaled[
+            modelOrder * stepSize : melSpec.shape[0] - modelOrder * stepSize, :
+        ]
 
         # Create feature names by appending the temporal shift
         feature_names = nameVector(channels[:, None], modelOrder=modelOrder)

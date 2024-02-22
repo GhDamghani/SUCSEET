@@ -38,23 +38,39 @@ class SpeechDecodingModel(nn.Module):
         self.num_classes = num_classes
         self.d_model = d_model
 
-        self.encoder_prenet_cnn = layers.EncoderPrenet(
-            channels=(d_model // 4, d_model // 2, d_model)
+        self.encoder_prenet_mlp = nn.Sequential(
+            nn.Dropout(dropout_prenet),
+            nn.Linear(timepoints, d_model * 8),
+            nn.ReLU(),
+            nn.BatchNorm1d(num_eeg_channels),
+            nn.Linear(d_model * 8, d_model * 8),
+            nn.ReLU(),
+            nn.Linear(d_model * 8, d_model),
+            nn.BatchNorm1d(num_eeg_channels),
         )
         self.encoder = layers.EncoderModel(
             d_model, num_heads, dropout_encoder, num_layers, dim_feedforward
         )
-        self.dropout_prenet = nn.Dropout(dropout_prenet)
-        self.dropout_clf = nn.Dropout(dropout_clf)
-        self.clf = nn.Sequential(nn.Linear(d_model, num_classes), nn.LogSoftmax(dim=-1))
+        self.channel_pool = nn.Sequential(
+            nn.Dropout(dropout_clf),
+            nn.Linear(num_eeg_channels, num_eeg_channels * 8),
+            nn.ReLU(),
+            nn.Linear(num_eeg_channels * 8, 1),
+            nn.BatchNorm1d(d_model),
+        )
+        self.clf = nn.Sequential(
+            nn.Dropout(dropout_clf),
+            nn.Linear(d_model, d_model * 8),
+            nn.ReLU(),
+            nn.Linear(d_model * 8, num_classes),
+        )
 
     def forward(self, x):
-        x = self.dropout_prenet(x)
-        x = self.encoder_prenet_cnn(x)
+        x = x.permute(0, 2, 1)
+        x = self.encoder_prenet_mlp(x)
         x = self.encoder(x)
-        # x = x.reshape(-1, self.d_model * self.num_eeg_channels)
-        x = torch.sum(x, dim=-2)
-        x = self.dropout_clf(x)
+        x = x.permute(0, 2, 1)
+        x = self.channel_pool(x).squeeze(-1)
         return self.clf(x)
 
     def __str__(self, batch_size=1):
@@ -62,6 +78,7 @@ class SpeechDecodingModel(nn.Module):
             self,
             input_size=(batch_size, self.timepoints, self.num_eeg_channels),
             verbose=0,
+            depth=4,
         ).__repr__()
 
 

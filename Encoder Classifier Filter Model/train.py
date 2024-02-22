@@ -47,7 +47,7 @@ def main(config):
         config.dropout_clf,
     )
     if not resume:
-        logger(model, model=True)
+        logger(model.__str__(config.BATCH_SIZE), model=True)
     model.to(config.DEVICE)
 
     LDA_acc = get_LDA_accuracy(train_dataset, val_dataset)
@@ -59,7 +59,8 @@ def main(config):
     histogram_weights = histogram_weights / np.sum(histogram_weights)
     logger(f"Max histogram weight      : {np.max(histogram_weights):5.2%}")
 
-    criterion = config.criterion(config.kmeans_folder, config.num_classes)
+    # criterion = config.criterion(config.kmeans_folder, config.num_classes)
+    criterion = config.criterion()
 
     # Define loss function and optimizer
     optimizer = config.optimizer(model.parameters())

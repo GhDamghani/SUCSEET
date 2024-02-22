@@ -1,14 +1,6 @@
-SingleWordProductionDutch-iBIDS
-SingleWordProductionDutch-main/features
-SingleWordProductionDutch-main/results
 *__pycache__
 *.vscode
-HuBERT Extract Hidden Units/results/
-Transformer model for kmeans Training/train_data
-Transformer model for kmeans Training/test_data
-Transformer model for kmeans Training - No files/train_data
-Transformer model for kmeans Training - No files/test_data
-Kmeans of sounds/features
-Kmeans of sounds/results
+Dataset_Sentence
+Dataset_Word
+SingleWordProductionDutch-iBIDS
 sentences_data
-sentences_data.zip

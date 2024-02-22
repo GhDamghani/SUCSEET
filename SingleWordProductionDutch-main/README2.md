@@ -1,1 +1,0 @@
-The assumption is that the 'features' folder is in this directory, produced by 'extract_features.py'.

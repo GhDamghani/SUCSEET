@@ -6,7 +6,7 @@ import math
 
 
 class EncoderPrenet(nn.Module):
-    def __init__(self, channels=(32, 64, 128)):
+    def __init__(self, d_model, num_layers, timepoints):
         super().__init__()
         kernel_size = (1, 4)
         stride = (1, 2)
@@ -14,36 +14,43 @@ class EncoderPrenet(nn.Module):
         nn.Conv2d = partial(
             nn.Conv2d, kernel_size=kernel_size, stride=stride, padding=padding
         )
-        self.layers = nn.Sequential(
-            nn.Conv2d(1, channels[0]),
-            nn.ReLU(),
-            nn.BatchNorm2d(channels[0]),
-            nn.Conv2d(channels[0], channels[1]),
-            nn.ReLU(),
-            nn.BatchNorm2d(channels[1]),
-            nn.Conv2d(channels[1], channels[2]),
-            nn.ReLU(),
-        )
+        channels = []
+        for i in range(num_layers):
+            channels.insert(0, d_model // (2**i))
+        channels.insert(0, 1)
+        layers_list = []
+        for i in range(num_layers):
+            layers_list.append(nn.Conv2d(channels[i], channels[i + 1]))
+            layers_list.append(nn.ReLU())
+            layers_list.append(nn.BatchNorm2d(channels[i + 1]))
+
+        self.layers = nn.Sequential(*layers_list)
+        self.linear = nn.Linear(timepoints // (2**num_layers), 1, bias=False)
 
     def forward(self, x):
         x = torch.permute(x, (0, 2, 1))
         x = x.unsqueeze(1)
         x = self.layers(x)
-        x = torch.mean(x, dim=-1)
+        x = self.linear(x).squeeze(-1)
         x = torch.permute(x, (0, 2, 1))
         return x
 
 
 class EncoderPrenetMLP(nn.Module):
-    def __init__(self, num_eeg_channels, out_d, timepoints, hidden_dim):
+    def __init__(self, d_model, timepoints, num_eeg_channels):
         super().__init__()
         self.fc1 = nn.Sequential(
-            nn.Linear(num_eeg_channels, out_d),
-            nn.BatchNorm1d(timepoints),
-            nn.LeakyReLU(),
+            nn.Linear(timepoints, d_model * 8),
+            nn.ReLU(),
+            nn.BatchNorm1d(num_eeg_channels),
+            nn.Linear(d_model * 8, d_model * 8),
+            nn.ReLU(),
+            nn.Linear(d_model * 8, d_model),
+            nn.BatchNorm1d(num_eeg_channels),
         )
 
     def forward(self, x):
+        x = x.permute(0, 2, 1)
         x = self.fc1(x)
         return x
 
@@ -72,8 +79,14 @@ class PositionalEncoding(nn.Module):
 
 
 class EncoderModel(nn.Module):
-    def __init__(self, d_model, num_heads, dropout, num_layers, dim_feedforward):
+    def __init__(
+        self, d_model, num_heads, dropout, num_layers, dim_feedforward, pos=False
+    ):
         super(EncoderModel, self).__init__()
+
+        if pos:
+            self.pe = PositionalEncoding(d_model, dropout)
+        self.pos = pos
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model, num_heads, dim_feedforward, dropout, batch_first=True
@@ -81,5 +94,7 @@ class EncoderModel(nn.Module):
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers)
 
     def forward(self, x):
+        if self.pos:
+            x = self.pe(x)
         x = self.encoder(x)
         return x

@@ -119,7 +119,7 @@ class Trainer:
                     interval_corrects = 0
                     interval_total = 0
             self.logger(
-                f"Epoch {self.epoch_i} Train loss: {self.train_loss/self.train_total:.5g}"
+                f"Epoch {self.epoch_i} Train loss: {self.train_loss/self.train_total:.5g}  Accuracy: {self.train_corrects/self.train_total:02.2%}"
             )
         self.resume = False
 

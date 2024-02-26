@@ -41,7 +41,7 @@ def main(config, model_path):
     model.to(config.DEVICE)
     model.load_state_dict(torch.load(model_path))
 
-    criterion = config.criterion(config.kmeans_folder, config.num_classes)
+    criterion = config.criterion()
 
     trainer = Trainer(
         model,

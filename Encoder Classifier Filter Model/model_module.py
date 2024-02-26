@@ -37,6 +37,7 @@ class SpeechDecodingModel(nn.Module):
         self.num_eeg_channels = num_eeg_channels
         self.num_classes = num_classes
         self.d_model = d_model
+        self.clf_factor = 2
 
         self.encoder_prenet_mlp = nn.Sequential(
             nn.Dropout(dropout_prenet),
@@ -53,16 +54,16 @@ class SpeechDecodingModel(nn.Module):
         )
         self.channel_pool = nn.Sequential(
             nn.Dropout(dropout_clf),
-            nn.Linear(num_eeg_channels, num_eeg_channels * 8),
+            nn.Linear(num_eeg_channels, num_eeg_channels * 16),
             nn.ReLU(),
-            nn.Linear(num_eeg_channels * 8, 1),
+            nn.Linear(num_eeg_channels * 16, self.clf_factor),
             nn.BatchNorm1d(d_model),
         )
         self.clf = nn.Sequential(
             nn.Dropout(dropout_clf),
-            nn.Linear(d_model, d_model * 8),
+            nn.Linear(d_model * self.clf_factor, d_model * 8 * self.clf_factor),
             nn.ReLU(),
-            nn.Linear(d_model * 8, num_classes),
+            nn.Linear(d_model * 8 * self.clf_factor, num_classes),
         )
 
     def forward(self, x):
@@ -70,7 +71,7 @@ class SpeechDecodingModel(nn.Module):
         x = self.encoder_prenet_mlp(x)
         x = self.encoder(x)
         x = x.permute(0, 2, 1)
-        x = self.channel_pool(x).squeeze(-1)
+        x = self.channel_pool(x).view(-1, self.d_model * self.clf_factor)
         return self.clf(x)
 
     def __str__(self, batch_size=1):

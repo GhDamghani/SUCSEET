@@ -55,8 +55,8 @@ def main(config):
     logger(f"LDA accuracy              : {LDA_acc:5.2%}")
     logger(f"Train dataset length      : {len(train_dataset):5d}")
     logger(f"Validation dataset length : {len(val_dataset):5d}")
-    histogram_weights = np.load(join(config.kmeans_folder, "histogram.npy"))
-    histogram_weights = histogram_weights / np.sum(histogram_weights)
+
+    histogram_weights = config.histogram_weights / np.sum(config.histogram_weights)
     logger(f"Max histogram weight      : {np.max(histogram_weights):5.2%}")
 
     # criterion = config.criterion(config.kmeans_folder, config.num_classes)

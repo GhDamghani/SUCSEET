@@ -9,7 +9,7 @@ from scipy.cluster.hierarchy import dendrogram
 
 
 def cluster(n_clusters):
-    clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=75)
+    clustering = AgglomerativeClustering(n_clusters=n_clusters)
     clustering = clustering.fit(melSpec)
     return clustering  # , dists
 
@@ -31,11 +31,11 @@ def plot(clustering, melSpec, original_audio, N):
     plt.tight_layout()
 
 
-def hist(clustering):
+def plot_hist(clustering):
     lbl_hist = np.unique(clustering.labels_, return_counts=True)
     hist = lbl_hist[1]
     np.save("histogram.npy", hist)
-    hist = lbl_hist[1] / np.sum(lbl_hist[1])
+    hist_normed = lbl_hist[1] / np.sum(lbl_hist[1])
     plt.figure()
     plt.stem(
         lbl_hist[0],
@@ -47,12 +47,20 @@ def hist(clustering):
 
     plt.tight_layout()
     plt.savefig("histogram.png")
+    return lbl_hist[1]
 
 
-def reconstructAudio(clustering, audiosr):
+def get_center(clustering):
     lbl = clustering.labels_
-    center = lambda x: clustering.cluster_centers_[x]
-    center_melSpec = np.stack(tuple(center(x) for x in lbl), axis=0)
+    center = np.zeros((clustering.n_clusters, melSpec.shape[1]))
+    for i in range(clustering.n_clusters):
+        center[i] = np.mean(melSpec[lbl == i], axis=0)
+    return center
+
+
+def reconstructAudio(clustering, audiosr, centers):
+    lbl = clustering.labels_
+    center_melSpec = np.stack(tuple(centers[x] for x in lbl), axis=0)
     center_audio = createAudio(center_melSpec, audiosr)
     return center_audio
 
@@ -83,15 +91,18 @@ def plot_dendrogram(model, **kwargs):
 
 if __name__ == "__main__":
     n_clusters = 20
-    path_input = r"../Dataset_Word"
-    participant = "sub-06"
+    path_input = r"../Dataset_Sentence"
+    participant = "p07_ses1_sentences"
     audiosr = 16000
-    save_kmeans = False
-    save_reconstructed = False
+    save_kmeans = True
+    save_reconstructed = True
     plot_figure = True
     print_score = True
 
     melSpec = np.load(join(path_input, f"{participant}_spec.npy"))
+    if participant == "p07_ses1_sentences":
+        noise = np.random.normal(0, 0.0001, (melSpec.shape[0], 1))
+        melSpec = melSpec + noise
     feat = np.load(join(path_input, f"{participant}_feat.npy"))
 
     clustering = cluster(n_clusters)
@@ -103,9 +114,10 @@ if __name__ == "__main__":
             join(path_input, f"{participant}_spec_cluster_{n_clusters}.npy"),
             clustering.labels_,
         )
+        centers = get_center(clustering)
         np.save(
             join(path_input, f"{participant}_spec_cluster_{n_clusters}_centers.npy"),
-            clustering.cluster_centers_,
+            centers,
         )
     if plot_figure:
         original_audio = scipy.io.wavfile.read(
@@ -113,11 +125,15 @@ if __name__ == "__main__":
         )
         original_audio = scipy.signal.decimate(original_audio[1], 160)
         plot(clustering, melSpec, original_audio, 500)
-        plot_dendrogram(clustering, truncate_mode="level", p=3)
-        hist(clustering)
+        # plot_dendrogram(clustering, truncate_mode="level", p=3)
+        hist = plot_hist(clustering)
+        np.save(
+            join(path_input, f"{participant}_spec_cluster_{n_clusters}_hist.npy"), hist
+        )
 
     if save_reconstructed:
-        center_audio = reconstructAudio(clustering, audiosr)
+        centers = get_center(clustering)
+        center_audio = reconstructAudio(clustering, audiosr, centers)
         scipy.io.wavfile.write(
             join(path_input, f"{participant}_cluster_center_reconstructed.wav"),
             int(audiosr),

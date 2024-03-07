@@ -41,9 +41,23 @@ def CEL_weights_class_balanced(samples_per_class, num_classes, beta=0.999):
     return weights
 
 
-def criterion(kmeans_folder, num_classes, weights=True):
+""" def criterion():
+    return torch.nn.CrossEntropyLoss(
+        reduction="mean",
+    ) """
+
+
+def criterion(histogram_weights, num_classes, weights=True):
+    histogram_weights = CEL_weights_class_balanced(histogram_weights, num_classes)
+    return torch.nn.CrossEntropyLoss(
+        histogram_weights,
+        reduction="mean",
+        label_smoothing=0.1,
+    )  #
+
+
+""" def criterion(histogram_weights, num_classes, weights=True):
     if weights:
-        histogram_weights = np.load(join(kmeans_folder, "histogram.npy"))
         histogram_weights = CEL_weights_class_balanced(histogram_weights, num_classes)
         return torch.nn.NLLLoss(
             histogram_weights,
@@ -52,7 +66,7 @@ def criterion(kmeans_folder, num_classes, weights=True):
     else:
         return torch.nn.NLLLoss(
             reduction="mean",
-        )
+        ) """
 
 
 """ def lossfn(kmeans_folder, num_classes):

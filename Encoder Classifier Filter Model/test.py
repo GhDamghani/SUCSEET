@@ -41,7 +41,7 @@ def main(config, model_path):
     model.to(config.DEVICE)
     model.load_state_dict(torch.load(model_path))
 
-    criterion = config.criterion()
+    criterion = config.criterion
 
     trainer = Trainer(
         model,
@@ -60,11 +60,19 @@ def main(config, model_path):
 
     pred_labels_uniques, pred_counts = np.unique(pred_labels, return_counts=True)
     labels, y_hist = np.unique(y_labels, return_counts=True)
-    pred_hist = np.zeros(config.num_classes)
+    labels = np.concatenate(([0], labels + 1))
+    y_hist = np.concatenate(([0.0], y_hist))
+    pred_hist = np.zeros(config.num_classes - 1)
     pred_hist[pred_labels_uniques] = pred_counts
+    pred_hist = np.concatenate(([0.0], pred_hist))
     total = np.sum(y_hist)
 
     pred_hist = pred_hist / total
+
+    print(labels)
+    print(y_hist)
+    print(pred_hist)
+
     y_hist = y_hist / total
 
     max_plot = max(pred_hist.max(), y_hist.max())

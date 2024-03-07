@@ -37,42 +37,32 @@ class SpeechDecodingModel(nn.Module):
         self.num_eeg_channels = num_eeg_channels
         self.num_classes = num_classes
         self.d_model = d_model
-        self.clf_factor = 2
 
         self.encoder_prenet_mlp = nn.Sequential(
             nn.Dropout(dropout_prenet),
-            nn.Linear(timepoints, d_model * 8),
+            nn.Linear(num_eeg_channels, num_eeg_channels),
+            nn.BatchNorm1d(timepoints),
             nn.ReLU(),
-            nn.BatchNorm1d(num_eeg_channels),
-            nn.Linear(d_model * 8, d_model * 8),
+            nn.Linear(num_eeg_channels, d_model),
+            nn.BatchNorm1d(timepoints),
             nn.ReLU(),
-            nn.Linear(d_model * 8, d_model),
-            nn.BatchNorm1d(num_eeg_channels),
         )
         self.encoder = layers.EncoderModel(
-            d_model, num_heads, dropout_encoder, num_layers, dim_feedforward
-        )
-        self.channel_pool = nn.Sequential(
-            nn.Dropout(dropout_clf),
-            nn.Linear(num_eeg_channels, num_eeg_channels * 16),
-            nn.ReLU(),
-            nn.Linear(num_eeg_channels * 16, self.clf_factor),
-            nn.BatchNorm1d(d_model),
+            d_model, num_heads, dropout_encoder, num_layers, dim_feedforward, pos=True
         )
         self.clf = nn.Sequential(
             nn.Dropout(dropout_clf),
-            nn.Linear(d_model * self.clf_factor, d_model * 8 * self.clf_factor),
+            nn.Linear(d_model, d_model),
+            nn.BatchNorm1d(1),
             nn.ReLU(),
-            nn.Linear(d_model * 8 * self.clf_factor, num_classes),
+            nn.Linear(d_model, num_classes - 1),
         )
 
     def forward(self, x):
-        x = x.permute(0, 2, 1)
         x = self.encoder_prenet_mlp(x)
         x = self.encoder(x)
-        x = x.permute(0, 2, 1)
-        x = self.channel_pool(x).view(-1, self.d_model * self.clf_factor)
-        return self.clf(x)
+        x = x[:, -1:, :]
+        return self.clf(x).squeeze(1)
 
     def __str__(self, batch_size=1):
         return summary(

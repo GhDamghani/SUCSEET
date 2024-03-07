@@ -44,7 +44,7 @@ class MyIterableDataset:
 
     def preprocess(self, i):
         x1 = self.feat[i : i + self.timepoints]
-        y1 = self.cluster[i + self.timepoints - 1 : i + self.timepoints]
+        y1 = self.cluster[i + self.timepoints - 1 : i + self.timepoints] - 1
         return x1, y1
 
     @background(max_prefetch=3)
@@ -67,6 +67,10 @@ class MyIterableDataset:
         return len(self.indices)
 
 
+def remove_silences(indices: list, removes: set) -> None:
+    indices[:] = [x for x in indices if x not in removes]
+
+
 def get_train_val_datasets(
     feat,
     cluster,
@@ -81,6 +85,10 @@ def get_train_val_datasets(
 
     no_samples = len(feat)
 
+    silences = np.array([i for i, x in enumerate(cluster) if (x == 0)])  #  or x == 1
+    remove_indices = silences - timepoints + 1
+    remove_indices = remove_indices[remove_indices >= 0]
+
     val_clip_length = np.int32(np.round(no_samples * validation_ratio))
     assert val_clip_length > timepoints
     val_start_range = range(timepoints, no_samples - timepoints - val_clip_length + 1)
@@ -92,6 +100,9 @@ def get_train_val_datasets(
         range(val_start + val_clip_length, no_samples - timepoints + 1)
     )
     train_indices = train_indices_left + train_indices_right
+
+    remove_silences(val_indices, remove_indices)
+    remove_silences(train_indices, remove_indices)
 
     if 0 < p_sample < 1:
         # Only a portion of train data to test the general capability of the model at first, optional

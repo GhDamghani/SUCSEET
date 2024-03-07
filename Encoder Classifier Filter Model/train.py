@@ -60,7 +60,7 @@ def main(config):
     logger(f"Max histogram weight      : {np.max(histogram_weights):5.2%}")
 
     # criterion = config.criterion(config.kmeans_folder, config.num_classes)
-    criterion = config.criterion()
+    criterion = config.criterion
 
     # Define loss function and optimizer
     optimizer = config.optimizer(model.parameters())

@@ -63,10 +63,11 @@ class MyIterableDataset:
             X = torch.tensor(np.stack(X)).to(self.device)
             y = torch.tensor(np.stack(y), dtype=torch.long).squeeze(-1)
             res = np.stack(res)
-            res[res == -np.inf] = -1e6  # np.finfo(np.float32).min
+            # res[res == -np.inf] = -1e6  # np.finfo(np.float32).min
             res = torch.tensor(res).squeeze(1)
             # res = res - torch.mean(res, dim=1, keepdim=True)
-            # res = torch.nn.functional.softmax(res, dim=1)
+            res = torch.nn.functional.softmax(res, dim=1)
+            # res = torch.log(res + 1e-18)
             yield X, y, res
         self.offset = 0
 
@@ -103,7 +104,7 @@ def get_train_val_datasets(
     val_start = np.random.choice(val_start_range, 1).item()
     val_indices = list(range(val_start, val_start + val_clip_length - timepoints + 1))
 
-    train_indices_left = list(range(0, val_start - timepoints))
+    train_indices_left = list(range(0, val_start - timepoints + 1))
     train_indices_right = list(
         range(val_start + val_clip_length, no_samples - timepoints + 1)
     )

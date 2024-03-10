@@ -41,26 +41,26 @@ def CEL_weights_class_balanced(samples_per_class, num_classes, beta=0.999):
     return weights
 
 
-def criterion(num_classes):
+""" def criterion(num_classes):
     def custom_loss(yHat, y):
         yHat = F.softmax(yHat, dim=1)
         y = torch.nn.functional.one_hot(y, num_classes=num_classes)
         cross_entropy = (-y * torch.log(yHat + 1e-8)).sum(dim=1).mean()
         return cross_entropy
 
-    return custom_loss
+    return custom_loss """
 
 
-""" def criterion(histogram_weights, num_classes, weights=True):
+def criterion(histogram_weights, num_classes, weights=True):
     histogram_weights = CEL_weights_class_balanced(histogram_weights, num_classes)
     return torch.nn.CrossEntropyLoss(
         histogram_weights,
         reduction="mean",
         label_smoothing=0.1,
-    )  # """
+    )  #
 
 
-""" def criterion(histogram_weights, num_classes, weights=True):
+def criterion_NLLLoss(histogram_weights, num_classes, weights=True):
     if weights:
         histogram_weights = CEL_weights_class_balanced(histogram_weights, num_classes)
         return torch.nn.NLLLoss(
@@ -70,7 +70,7 @@ def criterion(num_classes):
     else:
         return torch.nn.NLLLoss(
             reduction="mean",
-        ) """
+        )
 
 
 """ def lossfn(kmeans_folder, num_classes):

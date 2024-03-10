@@ -123,10 +123,10 @@ if __name__ == "__main__":
     participant = "p07_ses1_sentences"  #   "sub-06"
     audiosr = 16000
     save_kmeans = True
-    save_reconstructed = False
-    plot_figure = False
-    print_score = False
-    custom_cluster = False
+    save_reconstructed = True
+    plot_figure = True
+    print_score = True
+    custom_cluster = True
 
     melSpec = np.load(join(path_input, f"{participant}_spec.npy"))
     feat = np.load(join(path_input, f"{participant}_feat.npy"))

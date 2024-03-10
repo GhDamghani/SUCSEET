@@ -7,7 +7,7 @@ from os.path import join
 from logger import get_logger
 
 
-from model_module import SpeechDecodingModel, get_LDA_accuracy, get_QDA_accuracy
+from model_module import SpeechDecodingModel, get_QDA_accuracy
 
 
 def main(config):
@@ -51,15 +51,11 @@ def main(config):
         logger(model.__str__(config.BATCH_SIZE), model=True)
     model.to(config.DEVICE)
 
-    # LDA_acc = get_LDA_accuracy(train_dataset, val_dataset)
-    # QDA_acc = get_QDA_accuracy(train_dataset, val_dataset)
+    QDA_acc = get_QDA_accuracy(train_dataset, val_dataset)
     logger("Starting", right="=")
-    # logger(
-    #     f"LDA accuracy              : Test: {LDA_acc[0]:5.2%} Train: {LDA_acc[1]:5.2%}"
-    # )
-    # logger(
-    #     f"QDA accuracy              : Test: {QDA_acc[0]:5.2%} Train: {QDA_acc[0]:5.2%}"
-    # )
+    logger(
+        f"QDA accuracy              : Test: {QDA_acc[0]:5.2%} Train: {QDA_acc[1]:5.2%}"
+    )
     logger(f"Train dataset length      : {len(train_dataset):5d}")
     logger(f"Validation dataset length : {len(val_dataset):5d}")
 

@@ -60,12 +60,14 @@ class Trainer:
 
     def step(self, X, y, res):
         pred = self.model(X).cpu()
-        pred = pred + res
-        loss = self.criterion(pred, y)
+        final_pred = res + pred
+        final_pred = final_pred / torch.sum(final_pred, dim=1, keepdim=True)
+        final_pred = torch.log(final_pred + 1e-8)
+        loss = self.criterion(final_pred, y)
         corrects = torch.sum(
-            torch.argmax(torch.nn.functional.softmax(pred, -1), -1) == y
+            torch.argmax(torch.nn.functional.softmax(final_pred, -1), -1) == y
         ).item()
-        return pred, loss, corrects
+        return final_pred, loss, corrects
 
     def _train(self):
         self.model.train()
@@ -94,7 +96,7 @@ class Trainer:
                         self.checkpoint.save(self)
                 _, loss, corrects = self.step(X, y, res)
                 self.optimizer.zero_grad()
-                # loss.backward()
+                loss.backward()
                 self.optimizer.step()
 
                 if torch.isnan(torch.tensor(loss.item())).item():

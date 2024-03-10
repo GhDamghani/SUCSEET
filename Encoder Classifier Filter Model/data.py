@@ -95,7 +95,7 @@ def get_train_val_datasets(
     val_start = np.random.choice(val_start_range, 1).item()
     val_indices = list(range(val_start, val_start + val_clip_length - timepoints + 1))
 
-    train_indices_left = list(range(0, val_start - timepoints))
+    train_indices_left = list(range(0, val_start - timepoints + 1))
     train_indices_right = list(
         range(val_start + val_clip_length, no_samples - timepoints + 1)
     )

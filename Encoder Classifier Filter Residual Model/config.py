@@ -2,12 +2,12 @@ from functools import partial
 from torch import optim, device, cuda
 
 import numpy as np
-from os.path import join
+from os.path import join, exists
 import model_loss
 
 num_classes = 20
 
-optimizer = partial(optim.Adam, lr=1e-5, weight_decay=1e-2, amsgrad=True)
+optimizer = partial(optim.Adam, lr=1e-4, weight_decay=1e-2, amsgrad=True)
 lr_scheduler = partial(optim.lr_scheduler.ReduceLROnPlateau, factor=0.5, patience=100)
 
 feature_folder = "../Dataset_Word"  # "../Kmeans of sounds"
@@ -22,14 +22,20 @@ cluster_centers = np.load(
 histogram_weights = np.load(
     join(path_input, f"{participant}_spec_cluster_{num_classes}_hist.npy")
 )
-logits_residual = np.load(
-    join(path_input, f"{participant}_spec_cluster_{num_classes}_QDA_logit.npy")
-).astype(np.float32)
 
+logits_residual_file = join(
+    path_input, f"{participant}_spec_cluster_{num_classes}_QDA_logit.npy"
+)
+if exists(logits_residual_file):
+    logits_residual = np.load(logits_residual_file).astype(np.float32)
+else:
+    logits_residual = np.zeros((cluster.shape[0], num_classes)).astype(np.float32)
 
-criterion = model_loss.criterion(
-    num_classes
-)  # histogram_weights, num_classes, weights=True
+criterion = model_loss.criterion_NLLLoss(histogram_weights, num_classes, weights=True)
+
+# criterion = model_loss.criterion(
+#     histogram_weights, num_classes, weights=True
+# )  # num_classes
 
 SEED = 1379456
 DEVICE = device("cuda" if cuda.is_available() else "cpu")

@@ -3,10 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import model_layers as layers
 from torchinfo import summary
-from sklearn.discriminant_analysis import (
-    LinearDiscriminantAnalysis,
-    QuadraticDiscriminantAnalysis,
-)
+import numpy as np
 
 
 def flatten_batches(x):
@@ -29,24 +26,26 @@ def get_all_batches(dataset, flatten=False):
     return X, y, res
 
 
-def get_LDA_accuracy(train_dataset, test_dataset):
-    X_train, y_train, res_train = get_all_batches(train_dataset, True)
-    X_test, y_test, res_test = get_all_batches(test_dataset, True)
-    clf = LinearDiscriminantAnalysis()
-    clf.fit(X_train, y_train)
-    acc = clf.score(X_test, y_test)
-    acc_train = clf.score(X_train, y_train)
-    return acc, acc_train
-
-
 def get_QDA_accuracy(train_dataset, test_dataset):
-    X_train, y_train, res_train = get_all_batches(train_dataset, True)
-    X_test, y_test, res_test = get_all_batches(test_dataset, True)
-    clf = QuadraticDiscriminantAnalysis()
-    clf.fit(X_train, y_train)
+    pred_QDA_test = test_dataset.logits_residual[
+        np.array(test_dataset.indices) + test_dataset.timepoints - 1
+    ]
+    pred_QDA_train = train_dataset.logits_residual[
+        np.array(train_dataset.indices) + train_dataset.timepoints - 1
+    ]
 
-    acc = clf.score(X_test, y_test)
-    acc_train = clf.score(X_train, y_train)
+    y_test = test_dataset.cluster[
+        np.array(test_dataset.indices) + test_dataset.timepoints - 1
+    ]
+    y_train = train_dataset.cluster[
+        np.array(train_dataset.indices) + train_dataset.timepoints - 1
+    ]
+
+    corrects_test = np.sum(y_test == np.argmax(pred_QDA_test, -1))
+    corrects_train = np.sum(y_train == np.argmax(pred_QDA_train, -1))
+
+    acc = corrects_test / y_test.size
+    acc_train = corrects_train / y_train.size
     return acc, acc_train
 
 
@@ -88,8 +87,9 @@ class SpeechDecodingModel(nn.Module):
             nn.BatchNorm1d(1),
             nn.ReLU(),
             nn.Linear(d_model, num_classes),
+            nn.Softmax(-1),  # nn.Softmax(-1),
         )
-        self.scale_factor = nn.Parameter(torch.ones(1))
+        self.scale_factor = nn.Parameter(torch.ones(1) * 5, requires_grad=True)
 
     def forward(self, x):
         x = self.encoder_prenet_mlp(x)

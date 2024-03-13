@@ -70,32 +70,33 @@ class SpeechDecodingModel(nn.Module):
         self.d_model = d_model
 
         self.encoder_prenet_mlp = nn.Sequential(
-            nn.Dropout(dropout_prenet),
-            nn.Linear(num_eeg_channels, num_eeg_channels),
-            nn.BatchNorm1d(timepoints),
-            nn.ReLU(),
+            # nn.Dropout(dropout_prenet),
+            # nn.Linear(num_eeg_channels, num_eeg_channels),
+            # nn.BatchNorm1d(timepoints),
+            # nn.ReLU(),
+            # nn.Linear(num_eeg_channels, num_eeg_channels),
+            # nn.BatchNorm1d(timepoints),
+            # nn.ReLU(),
             nn.Linear(num_eeg_channels, d_model),
-            nn.BatchNorm1d(timepoints),
+            # nn.BatchNorm1d(timepoints),
             nn.ReLU(),
         )
         self.encoder = layers.EncoderModel(
-            d_model, num_heads, dropout_encoder, num_layers, dim_feedforward, pos=True
+            d_model, num_heads, dropout_encoder, num_layers, dim_feedforward, pos=False
         )
         self.clf = nn.Sequential(
-            nn.Dropout(dropout_clf),
-            nn.Linear(d_model, d_model),
-            nn.BatchNorm1d(1),
-            nn.ReLU(),
-            nn.Linear(d_model, num_classes),
-            nn.Softmax(-1),  # nn.Softmax(-1),
+            # nn.Dropout(dropout_clf),
+            # nn.Linear(d_model, d_model),
+            # nn.BatchNorm1d(1),
+            # nn.ReLU(),
+            nn.Linear(d_model, num_classes - 1),
         )
-        self.scale_factor = nn.Parameter(torch.ones(1) * 5, requires_grad=True)
 
     def forward(self, x):
         x = self.encoder_prenet_mlp(x)
         x = self.encoder(x)
         x = x[:, -1:, :]
-        return self.clf(x).squeeze(1) * self.scale_factor
+        return self.clf(x).squeeze(1)
 
     def __str__(self, batch_size=1):
         return summary(

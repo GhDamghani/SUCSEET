@@ -6,13 +6,13 @@ from os.path import join
 
 
 class CCE(nn.Module):
-    def __init__(self, device="cpu", balancing_factor=1):
+    def __init__(self, balancing_factor, device="cpu"):
         super(CCE, self).__init__()
         self.nll_loss = nn.NLLLoss()
         self.device = device  # {'cpu', 'cuda:0', 'cuda:1', ...}
         self.balancing_factor = balancing_factor
 
-    def forward(self, yHat, y):
+    def forward(self, yHat, y, w):
         # Note: yHat.shape[1] <=> number of classes
         batch_size = len(y)
         # cross entropy
@@ -33,7 +33,7 @@ class CCE(nn.Module):
         return cross_entropy - self.balancing_factor * complement_entropy
 
 
-def CEL_weights_class_balanced(samples_per_class, num_classes, beta=0.999):
+def CEL_weights_class_balanced(samples_per_class, num_classes, beta=0.99):
     effective_num = 1.0 - np.power(beta, samples_per_class)
     weights = (1.0 - beta) / np.array(effective_num)
     weights = weights / np.sum(weights) * num_classes
@@ -55,10 +55,25 @@ def criterion_cross_entropy_observation_weight(pred, y, w):
     y_onehot = torch.nn.functional.one_hot(y, num_classes=pred.shape[1]).float()
     log_probs = torch.nn.functional.log_softmax(pred, dim=1)
     weighted_loss = -torch.sum(y_onehot * log_probs, dim=1)
-    loss = torch.sum(weighted_loss * w) / torch.sum(
-        w
-    )  # weighted average of weighted_loss with w
+    loss = torch.mean(weighted_loss * w)  # weighted average of weighted_loss with w
     return loss
+
+
+def criterion_cross_entropy_observation_weight_class_balanced(
+    histogram_weights, num_classes
+):
+    class_weights = CEL_weights_class_balanced(
+        histogram_weights, num_classes, beta=0.9999
+    )
+
+    def criterion_cross_entropy_observation_weight(pred, y, w, test=False):
+        y_onehot = torch.nn.functional.one_hot(y, num_classes=pred.shape[1]).float()
+        log_probs = torch.nn.functional.log_softmax(pred, dim=1)
+        weighted_loss = -torch.sum(y_onehot * log_probs, dim=1)
+        loss = torch.mean(weighted_loss * class_weights.take(y) * w)
+        return loss
+
+    return criterion_cross_entropy_observation_weight
 
 
 def criterion(histogram_weights, num_classes, weights=True):

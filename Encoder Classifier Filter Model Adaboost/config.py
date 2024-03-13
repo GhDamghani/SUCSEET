@@ -7,7 +7,7 @@ import model_loss
 
 num_classes = 20
 
-optimizer = partial(optim.Adam, lr=1e-4, weight_decay=1e-2, amsgrad=True)
+optimizer = partial(optim.Adam, lr=1e-5, weight_decay=1e-1, amsgrad=True)
 lr_scheduler = partial(optim.lr_scheduler.ReduceLROnPlateau, factor=0.5, patience=100)
 
 feature_folder = "../Dataset_Word"  # "../Kmeans of sounds"
@@ -21,10 +21,12 @@ cluster_centers = np.load(
 )
 histogram_weights = np.load(
     join(path_input, f"{participant}_spec_cluster_{num_classes}_hist.npy")
+)[1:]
+
+criterion = model_loss.criterion_cross_entropy_observation_weight_class_balanced(
+    histogram_weights, num_classes - 1
 )
-
-
-criterion = model_loss.criterion_cross_entropy_observation_weight
+# criterion = model_loss.CCE(balancing_factor=1 / (num_classes - 1))
 
 # criterion = model_loss.criterion(
 #     histogram_weights, num_classes, weights=True
@@ -33,11 +35,11 @@ criterion = model_loss.criterion_cross_entropy_observation_weight
 SEED = 1379456
 DEVICE = device("cuda" if cuda.is_available() else "cpu")
 
-d_model = 100
-dim_feedforward = d_model * 4
-num_heads = 2
-num_layers = 6
-timepoints = 40
+d_model = 128
+dim_feedforward = 2048
+num_heads = 4
+num_layers = 20
+timepoints = 5
 num_classes = num_classes
 num_eeg_channels = feat.shape[1]
 
@@ -48,10 +50,10 @@ dropout_clf = 0.1
 VALIDATION_RATIO = 0.2
 P_SAMPLE = 1.0
 
-BATCH_SIZE = 16
-EPOCHS = 200
+BATCH_SIZE = 64
+EPOCHS = 2000
 LOG_TIMES = 10
 
-AUTOSAVE_SECONDS = 60000
+AUTOSAVE_SECONDS = 600
 CHECKPOINTFILE = None
-EARLY_STOPPING_PATIENCE = 100
+EARLY_STOPPING_PATIENCE = 20

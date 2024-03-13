@@ -6,6 +6,7 @@ import numpy as np
 import data
 from trainer import Trainer
 from model_module import get_all_batches
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 
 def inital_accuracy(val_dataset):
@@ -24,7 +25,6 @@ def main(config, model_path):
     _, val_dataset = data.get_train_val_datasets(
         config.feat,
         config.cluster,
-        config.logits_residual,
         config.timepoints,
         config.num_eeg_channels,
         config.BATCH_SIZE,
@@ -50,8 +50,6 @@ def main(config, model_path):
     model.load_state_dict(torch.load(model_path))
 
     criterion = config.criterion
-
-    print("Inital Accuracy: ", inital_accuracy(val_dataset))
 
     trainer = Trainer(
         model,
@@ -108,6 +106,13 @@ def main(config, model_path):
     plt.title("Histogram of True Output for test data")
 
     plt.tight_layout()
+
+    cm = confusion_matrix(y_labels, pred_labels, labels=range(config.num_classes))
+    disp = ConfusionMatrixDisplay(
+        confusion_matrix=cm, display_labels=range(config.num_classes)
+    )
+    disp.plot()
+
     plt.show()
 
 

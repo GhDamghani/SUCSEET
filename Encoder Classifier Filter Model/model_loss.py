@@ -41,19 +41,19 @@ def CEL_weights_class_balanced(samples_per_class, num_classes, beta=0.999):
     return weights
 
 
-def criterion():
+""" def criterion():
     return torch.nn.CrossEntropyLoss(
         reduction="mean",
-    )
+    ) """
 
 
-""" def criterion(histogram_weights, num_classes, weights=True):
+def criterion(histogram_weights, num_classes, weights=True):
     histogram_weights = CEL_weights_class_balanced(histogram_weights, num_classes)
     return torch.nn.CrossEntropyLoss(
         histogram_weights,
         reduction="mean",
         label_smoothing=0.1,
-    )  # """
+    )  #
 
 
 """ def criterion(histogram_weights, num_classes, weights=True):

@@ -35,7 +35,7 @@ class Trainer:
 
         if not self.test_mode:
             self.observation_weights = torch.ones(
-                len(self.train_dataset), requires_grad=False
+                self.train_dataset.feat.shape[0], requires_grad=False
             ).float()
 
             self.logger = logger
@@ -67,7 +67,30 @@ class Trainer:
         loss = self.criterion(pred, y, w)
         corrects_mask = torch.argmax(pred, -1) == y
         corrects = torch.sum(corrects_mask).item()
-        return loss, corrects, corrects_mask
+        return pred, loss, corrects, corrects_mask
+
+    def update_observation_weights(self):
+        self.false_observation_weights = torch.zeros(
+            self.train_dataset.feat.shape[0], requires_grad=False
+        ).float()
+        self.observation_err = 0
+        with torch.no_grad():
+            for X, y, ind in self.train_dataset:
+                w = self.observation_weights[ind]
+                pred = self.model(X).cpu()
+                corrects_mask = torch.argmax(pred, -1) == y
+                self.false_observation_weights[np.array(ind)[~corrects_mask]] = 1.0
+                self.observation_err += torch.sum(w[~corrects_mask])
+            self.observation_err /= len(self.train_dataset)
+            alpha = torch.log(
+                (1 - self.observation_err) / self.observation_err
+            ).item() + np.log(self.model.num_classes - 1)
+            self.observation_weights = torch.exp(alpha * self.false_observation_weights)
+            self.observation_weights = (
+                self.observation_weights
+                / torch.sum(self.observation_weights[self.train_dataset.indices])
+                * len(self.train_dataset)
+            )
 
     def _train(self):
         self.model.train()
@@ -83,10 +106,6 @@ class Trainer:
         iterator = self.train_dataset
         self.train_dataset.epoch_i = self.epoch_i
         with open("tqdm_batch.log", "w") as file:
-            self.false_observation_weights = torch.zeros(
-                len(self.train_dataset), requires_grad=False
-            ).float()
-            self.observation_err = 0
             progress_bar = tqdm(
                 iterator,
                 file=file,
@@ -99,7 +118,7 @@ class Trainer:
                         self.checkpoint.update_set(self)
                         self.checkpoint.save(self)
                 w = self.observation_weights[ind]
-                loss, corrects, corrects_mask = self.step(X, y, w)
+                _, loss, corrects, _ = self.step(X, y, w)
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
@@ -115,9 +134,6 @@ class Trainer:
                 self.train_total += y.numel()
                 interval_total += y.numel()
 
-                self.false_observation_weights[ind[~corrects_mask]] = 1.0
-                self.observation_err += torch.sum(w[~corrects_mask])
-
                 if torch.isnan(torch.tensor(self.train_loss)).item():
                     pass
 
@@ -131,16 +147,9 @@ class Trainer:
                     interval_loss = 0
                     interval_corrects = 0
                     interval_total = 0
-            alpha = torch.log(
-                (1 - self.observation_err) / self.observation_err
-            ) + torch.log(self.model.num_classes - 1)
-            self.observation_weights *= torch.exp(
-                alpha * self.false_observation_weights
-            )
             self.logger(
                 f"Epoch {self.epoch_i} Train loss: {self.train_loss/self.train_total:.5g}  Accuracy: {self.train_corrects/self.train_total:02.2%}"
             )
-            self.logger(f"scale_factor {self.model.scale_factor.item()}")
         self.resume = False
 
     def validate(self, return_data=False):
@@ -152,8 +161,9 @@ class Trainer:
             pred_labels = []
             y_labels = []
         with torch.no_grad():
-            for X, y, res in self.val_dataset:
-                pred, loss, corrects_ = self.step(X, y, res)
+            for X, y, ind in self.val_dataset:
+                w = torch.ones(y.shape[0], dtype=torch.float)
+                pred, loss, corrects_, _ = self.step(X, y, w)
                 self.val_loss += loss.item() * y.numel()
                 corrects += corrects_
                 total += y.numel()
@@ -196,6 +206,10 @@ class Trainer:
             for epoch_i in progress_bar:
                 self.epoch_i = epoch_i
 
+                # if self.epoch_i == 0:
+                #     self.logger(f"Initializing Observation Weights", right=" ")
+                #     self.update_observation_weights()
+
                 epoch_str = f"Epoch: {self.epoch_i:04d}"
                 lr_str = (
                     f"Lr: {self.optimizer.state_dict()['param_groups'][0]['lr']:.4g}"
@@ -221,6 +235,11 @@ class Trainer:
                     )
                     self.logger("&")
                     break
+
+                #### Updating Observation Weights ####
+
+                # if self.epoch_i == 0 or ((self.epoch_i + 1) % 10 == 0):
+                #     self.update_observation_weights()
 
                 #### Learning Rate Scheduler ####
 

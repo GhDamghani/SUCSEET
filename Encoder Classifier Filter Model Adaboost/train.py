@@ -25,7 +25,6 @@ def main(config):
     train_dataset, val_dataset = data.get_train_val_datasets(
         config.feat,
         config.cluster,
-        config.logits_residual,
         config.timepoints,
         config.num_eeg_channels,
         config.BATCH_SIZE,
@@ -51,11 +50,11 @@ def main(config):
         logger(model.__str__(config.BATCH_SIZE), model=True)
     model.to(config.DEVICE)
 
-    QDA_acc = get_QDA_accuracy(train_dataset, val_dataset)
+    # QDA_acc = get_QDA_accuracy(train_dataset, val_dataset)
     logger("Starting", right="=")
-    logger(
-        f"QDA accuracy              : Test: {QDA_acc[0]:5.2%} Train: {QDA_acc[1]:5.2%}"
-    )
+    # logger(
+    #     f"QDA accuracy              : Test: {QDA_acc[0]:5.2%} Train: {QDA_acc[1]:5.2%}"
+    # )
     logger(f"Train dataset length      : {len(train_dataset):5d}")
     logger(f"Validation dataset length : {len(val_dataset):5d}")
 

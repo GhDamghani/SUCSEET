@@ -7,6 +7,21 @@ from reconstruction_minimal import createAudio
 from sklearn.metrics import silhouette_score
 from sklearn.model_selection import KFold
 from matplotlib.widgets import Slider
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+
+
+def tsne(n_clusters, train, test):
+    tsne = TSNE(n_components=3)
+    y_pred = tsne.fit_transform(train)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+    ax.scatter(y_pred[:, 0], y_pred[:, 1], y_pred[:, 2])
+    plt.show()
+    pass
 
 
 def hierarchial(n_clusters, train, test):
@@ -15,10 +30,16 @@ def hierarchial(n_clusters, train, test):
     return clustering.predict(test)
 
 
-def kmeans(n_clusters, train, test):
+def kmeans(n_clusters, numComps, train, test):
+    pca = PCA()
+    pca.fit(train)
+
+    trainData = np.dot(train, pca.components_[:numComps, :].T)
+    testData = np.dot(test, pca.components_[:numComps, :].T)
     clustering = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
-    clustering.fit(train)
-    return clustering.predict(test), clustering.cluster_centers_
+    y = clustering.fit_predict(trainData)
+    centers = np.stack([np.mean(train[y == i], axis=0) for i in range(n_clusters)])
+    return y, clustering.predict(testData), centers
 
 
 def powerfrommelSpec(melSpec):
@@ -42,55 +63,53 @@ def get_real_index(lbl):
     return np.array([d[x] for x in lbl])
 
 
-def cluster_twostage(n_clusters, melSpec):
-    nfolds = 10
-    kf = KFold(nfolds, shuffle=False)
+def cluster_twostage(n_clusters, melSpec, train, test):
+    numComps = 15
+    lbl = np.zeros(melSpec.shape[0], dtype=int)
+    lbl0_train, lbl0_test, centers0 = kmeans(2, numComps, melSpec[train], melSpec[test])
+    silence_index = get_silence(centers0)
+    speech_mask_train = np.where(lbl0_train != silence_index)
+    speech_mask_test = np.where(lbl0_test != silence_index)
+    lbl1_train, lbl1_test, centers1 = kmeans(
+        n_clusters - 1,
+        numComps,
+        melSpec[train[speech_mask_train]],
+        melSpec[test[speech_mask_test]],
+    )
+    lbl0_test[speech_mask_test] = 1 + lbl1_test
+    lbl0_train[speech_mask_train] = 1 + lbl1_train
+    lbl[train] = lbl0_train
+    lbl[test] = lbl0_test
 
-    clustering = kmeans
+    centers = np.concatenate((centers0[silence_index : silence_index + 1], centers1))
+
+    values = np.unique(lbl)
+    l_values = len(values)
+    if l_values < n_clusters:
+        print(k, "Not enough clusters")
+        print("Before", values)
+        d = dict()
+        for i in range(len(values)):
+            d[values[i]] = i
+        lbl = np.array([d[x] for x in lbl])
+        print("After", np.unique(lbl))
+        centers_corrected = np.zeros((n_clusters, melSpec.shape[1]))
+        centers_corrected[list(range(l_values))] = centers[values]
+        print(np.all(centers_corrected[l_values:] == 0.0))
+    else:
+        centers_corrected = centers
+
+    return lbl, centers_corrected
+
+
+def cluster(n_clusters, melSpec, train, test):
 
     lbl = np.zeros(melSpec.shape[0], dtype=int)
-    melSpec_centers = np.zeros(melSpec.shape)
+    lbl_train, lbl_test, centers = kmeans(n_clusters, melSpec[train], melSpec[test])
+    lbl[train] = lbl_train
+    lbl[test] = lbl_test
 
-    for k, (train, test) in enumerate(kf.split(melSpec)):
-        trainData = melSpec[train]
-        testData = melSpec[test]
-        lbl0, centers0 = clustering(2, trainData, testData)
-        silence_index = get_silence(centers0)
-        speech_mask = np.where(lbl0 != silence_index)
-        silence_mask = np.where(lbl0 == silence_index)
-        melSpec_centers[test[silence_mask]] = centers0[silence_index]
-        lbl1, centers1 = clustering(
-            n_clusters - 1, trainData[speech_mask], testData[speech_mask]
-        )
-        lbl[test[speech_mask]] = 1 + lbl1  # get_real_index(lbl1)
-        melSpec_centers[test[speech_mask]] = np.array([centers1[i] for i in lbl1])
-        print(
-            "K:",
-            k,
-            "Score:",
-            round(score(lbl[test], testData), 3),
-            "Empty clusters:",
-            get_empty_clusters(lbl[test], n_clusters),
-        )
-    return lbl, melSpec_centers
-
-
-def cluster(n_clusters, melSpec):
-    nfolds = 10
-    kf = KFold(nfolds, shuffle=False)
-
-    clustering = kmeans
-
-    lbl = np.zeros(melSpec.shape[0], dtype=int)
-
-    for k, (train, test) in enumerate(kf.split(melSpec)):
-        trainData = melSpec[train]
-        testData = melSpec[test]
-        lbl0 = clustering(n_clusters, trainData, testData)
-        lbl[test] = lbl0
-        print(k, round(score(lbl0, testData), 3))
-
-    return lbl
+    return lbl, centers
 
 
 def score(lbl, melSpec):
@@ -146,54 +165,79 @@ def get_center(lbl, n_clusters):
 
 
 if __name__ == "__main__":
-    n_clusters = 20
+    n_clusters = 5
+    nfolds = 10
     path_input = "../Dataset_Word"  # "../Dataset_Sentence"
     participant = "sub-06"  #    "p07_ses1_sentences"
     audiosr = 16000
     save_kmeans = True
     save_reconstructed = True
     plot_figure = True
-    print_score = True
     custom_cluster = False
 
     melSpec = np.load(join(path_input, f"{participant}_spec.npy"))
     feat = np.load(join(path_input, f"{participant}_feat.npy"))
 
     if custom_cluster:
-        lbl = np.load(join(path_input, f"{participant}_spec_cluster_{n_clusters}.npy"))
-        center_melSpec = np.load(
-            join(path_input, f"{participant}_spec_cluster_{n_clusters}_centers.npy")
+        lbl = np.load(
+            join(
+                "kmeans", f"{participant}_spec_cluster_{n_clusters}_kfold_{nfolds}.npy"
+            )
+        )
+        melSpec_centers = np.load(
+            join(
+                "kmeans",
+                f"{participant}_spec_cluster_{n_clusters}_kfold_{nfolds}_centers.npy",
+            )
         )
     else:
-        lbl, center_melSpec = cluster_twostage(n_clusters, melSpec)
+
+        kf = KFold(nfolds, shuffle=False)
+
+        lbl = np.zeros((nfolds, melSpec.shape[0]), dtype=int)
+        melSpec_centers = np.zeros([nfolds, n_clusters, melSpec.shape[1]])
+        for k, (train, test) in enumerate(kf.split(melSpec)):
+            lbl[k], melSpec_centers[k] = cluster_twostage(
+                n_clusters, melSpec, train, test
+            )
+            print("K", k, "Score", round(score(lbl[k, test], melSpec[test]), 3))
 
     if save_kmeans:
         np.save(
-            join(path_input, f"{participant}_spec_cluster_{n_clusters}.npy"),
+            join(
+                "kmeans", f"{participant}_spec_cluster_{n_clusters}_kfold_{nfolds}.npy"
+            ),
             lbl,
         )
         np.save(
-            join(path_input, f"{participant}_spec_cluster_{n_clusters}_centers.npy"),
-            center_melSpec,
+            join(
+                "kmeans",
+                f"{participant}_spec_cluster_{n_clusters}_kfold_{nfolds}_centers.npy",
+            ),
+            melSpec_centers,
         )
     if plot_figure:
+        k = 0
         original_audio = scipy.io.wavfile.read(
             join(path_input, f"{participant}_orig_synthesized.wav")
         )
         original_audio = scipy.signal.decimate(original_audio[1], 160)
-        plot(lbl, melSpec, original_audio, 500)
+        plot(lbl[k], melSpec, original_audio, 500)
         # plot_dendrogram(clustering, truncate_mode="level", p=3)
-        hist = plot_hist(lbl)
+        hist = plot_hist(lbl[k])
         np.save(
-            join(path_input, f"{participant}_spec_cluster_{n_clusters}_hist.npy"), hist
+            join("kmeans", f"{participant}_spec_cluster_{n_clusters}_k_{k}_hist.npy"),
+            hist,
         )
 
     if save_reconstructed:
+        k = 0
+        center_melSpec = np.stack(tuple(melSpec_centers[k][x] for x in lbl[k]), axis=0)
         center_audio = createAudio(center_melSpec, audiosr)
         scipy.io.wavfile.write(
             join(
-                path_input,
-                f"{participant}_cluster_{n_clusters}_center_reconstructed.wav",
+                "kmeans",
+                f"{participant}_cluster_{n_clusters}_k_{k}_center_reconstructed.wav",
             ),
             int(audiosr),
             center_audio,

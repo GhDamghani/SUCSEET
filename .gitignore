@@ -1,6 +1,3 @@
 *__pycache__
 *.vscode
-Dataset_Sentence
-Dataset_Word
-SingleWordProductionDutch-iBIDS
-sentences_data
+dataset

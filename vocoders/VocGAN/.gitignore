@@ -1,0 +1,6 @@
+*__pycache__
+*.vscode
+*.pt
+assets
+generated_audio_files
+original_audio_files

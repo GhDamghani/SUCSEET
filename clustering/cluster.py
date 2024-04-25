@@ -24,6 +24,8 @@ sys.path.append(master_path)
 from vocoders.Griffin_Lim import createAudio
 from vocoders.VocGAN import StreamingVocGan
 
+import utils
+
 
 def hierarchial(n_clusters, train, test):
     clustering = AgglomerativeClustering(n_clusters=n_clusters)
@@ -31,19 +33,14 @@ def hierarchial(n_clusters, train, test):
     return clustering.predict(test)
 
 
-def kmeans(n_clusters, train, test, pca_components=None):
-    steps = [StandardScaler()]
-    if pca_components is not None and isinstance(pca_components, int):
-        steps.append(PCA(n_components=pca_components))
-    preprocessor = make_pipeline(*steps)
-    preprocessed_train = preprocessor.fit_transform(train)
+def kmeans(n_clusters, X_train, X_whole, melSpec_train):
 
-    clustering = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
-    y = clustering.fit_predict(preprocessed_train)
+    clustering = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
+    y = clustering.fit_predict(X_train)
 
-    centers = get_center(y, train, n_clusters)
+    centers = get_center(y, melSpec_train, n_clusters)
 
-    return y, clustering.predict(preprocessor.transform(test)), centers
+    return y, clustering.predict(X_whole), centers
 
 
 def powerfrommelSpec(melSpec):
@@ -67,27 +64,23 @@ def get_real_index(lbl):
     return np.array([d[x] for x in lbl])
 
 
-def cluster_twostage(n_clusters, melSpec, train, test, pca_components):
-    lbl = np.zeros(melSpec.shape[0], dtype=int)
-    lbl0_train, lbl0_test, centers0 = kmeans(
-        2, melSpec[train], melSpec[test], pca_components
-    )
+def cluster_twostage(n_clusters, X_train, X_whole, melSpec_train):
+    lbl0_train, lbl0_whole, centers0 = kmeans(2, X_train, X_whole, melSpec_train)
     silence_index = get_silence(centers0)
     speech_mask_train = np.where(lbl0_train != silence_index)
-    speech_mask_test = np.where(lbl0_test != silence_index)
-    lbl1_train, lbl1_test, centers1 = kmeans(
+    speech_mask_whole = np.where(lbl0_whole != silence_index)
+    lbl1_train, lbl1_whole, centers1 = kmeans(
         n_clusters - 1,
-        melSpec[train[speech_mask_train]],
-        melSpec[test[speech_mask_test]],
-        pca_components,
+        X_train[speech_mask_train],
+        X_whole[speech_mask_whole],
+        melSpec_train[speech_mask_train],
     )
-    lbl0_test[speech_mask_test] = 1 + lbl1_test
     lbl0_train[speech_mask_train] = 1 + lbl1_train
-    lbl[train] = lbl0_train
-    lbl[test] = lbl0_test
+    lbl0_whole[speech_mask_whole] = 1 + lbl1_whole
 
     centers = np.concatenate((centers0[silence_index : silence_index + 1], centers1))
 
+    lbl = lbl0_whole
     values = np.unique(lbl)
     l_values = len(values)
     if l_values < n_clusters:
@@ -98,7 +91,7 @@ def cluster_twostage(n_clusters, melSpec, train, test, pca_components):
             d[values[i]] = i
         lbl = np.array([d[x] for x in lbl])
         print("After", np.unique(lbl))
-        centers_corrected = np.zeros((n_clusters, melSpec.shape[1]))
+        centers_corrected = np.zeros((n_clusters, X_whole.shape[1]))
         centers_corrected[list(range(l_values))] = centers[values]
         print(np.all(centers_corrected[l_values:] == 0.0))
     else:
@@ -107,15 +100,8 @@ def cluster_twostage(n_clusters, melSpec, train, test, pca_components):
     return lbl, centers_corrected
 
 
-def cluster(n_clusters, melSpec, train, test, pca_components):
-
-    lbl = np.zeros(melSpec.shape[0], dtype=int)
-    lbl_train, lbl_test, centers = kmeans(
-        n_clusters, melSpec[train], melSpec[test], pca_components
-    )
-    lbl[train] = lbl_train
-    lbl[test] = lbl_test
-
+def cluster(n_clusters, X_train, X_whole, melSpec_train):
+    lbl_train, lbl, centers = kmeans(n_clusters, X_train, X_whole, melSpec_train)
     return lbl, centers
 
 
@@ -124,12 +110,11 @@ def score(lbl, melSpec):
     return silhouette_avg
 
 
-def plot(lbl, melSpec, original_audio, N):
-    fig, ax = plt.subplots(3, 1, sharex=True)
-    ax[0].plot(lbl[:N])
-    ax[1].imshow(melSpec[:N].T, "gray", aspect="auto")
-    ax[2].plot(original_audio[:N])
-    slider_ax = fig.add_axes([0.2, 0.05, 0.6, 0.03])
+def plot(lbl, melSpec, original_audio, N, ratio):
+    fig, ax = plt.subplots(3, 1, figsize=(5, 5))
+    offset = 3130
+    plot_update(lbl, melSpec, original_audio, N, ax, offset, ratio)
+    slider_ax = fig.add_axes([0.2, 0, 0.6, 0.03])
     slider = Slider(slider_ax, "X Offset", 0, lbl.size - N, valinit=0)
 
     def update(val):
@@ -140,12 +125,59 @@ def plot(lbl, melSpec, original_audio, N):
         ax[2].clear()
 
         # Create a new view of the image with the desired offset
-        ax[0].plot(lbl[offset : offset + N])
-        ax[1].imshow(melSpec[offset : offset + N].T, "gray", aspect="auto")
-        ax[2].plot(original_audio[offset : offset + N])
+        plot_update(lbl, melSpec, original_audio, N, ax, offset, ratio)
         plt.draw()
 
-    slider.on_changed(update)
+    # slider.on_changed(update)
+    plt.tight_layout()
+    plt.savefig("demo.png", transparent=True)
+
+
+color_pallet = [
+    "#808080",
+    "#a6cee3",
+    "#1f78b4",
+    "#b2df8a",
+    "#33a02c",
+    "#fb9a99",
+    "#e31a1c",
+    "#fdbf6f",
+    "#ff7f00",
+    "#cab2d6",
+    "#6a3d9a",
+    "#ffff99",
+    "#b15928",
+    "#8dd3c7",
+    "#ffffb3",
+    "#bebada",
+    "#fb8072",
+    "#80b1d3",
+    "#fdb462",
+    "#b3de69",
+    "#fccde5",
+    "#d9d9d9",
+    "#bc80bd",
+    "#ccebc5",
+    "#ffed6f",
+]
+color_pallet = [
+    (int(x[1:3], 16) / 255, int(x[3:5], 16) / 255, int(x[5:7], 16) / 255)
+    for x in color_pallet
+]
+
+
+def plot_update(lbl, melSpec, original_audio, N, ax, offset, ratio):
+    class_image = np.zeros((1, N, 3))
+    for i in range(N):
+        class_image[0, i] = color_pallet[lbl[offset + i]]
+    ax[0].plot(original_audio[offset * ratio : (offset + N) * ratio])
+    ax[0].set_xlim(0, N * ratio)
+    ax[0].set_ylim(-1.0, 1.0)
+    ax[0].axis("off")
+    ax[1].imshow(melSpec[offset : offset + N].T, "gray", aspect="auto")
+    ax[1].axis("off")
+    ax[2].imshow(class_image, aspect="auto")
+    ax[2].axis("off")
 
 
 def plot_hist(lbl):
@@ -184,63 +216,99 @@ def get_center(lbl, melSpec, n_clusters):
 
 
 if __name__ == "__main__":
-    n_clusters = 2
-    pca_components = 30
+    n_clusters = 10
+    pca_components = None
 
-    nfolds = 5
+    nfolds = 10
     dataset_type = "Word"
     vocoder = "VocGAN"  # "Griffin_Lim"
     path_input = join(master_path, "dataset", dataset_type, vocoder)
     participant = "sub-06"  #    "p07_ses1_sentences"
 
+    DCT_coeffs = 40
+    preprocessing_list = ["normalize"]
+    if DCT_coeffs is not None:
+        preprocessing_list.append("DCT")
+
     save_kmeans = True
     save_reconstructed = True
-    plot_figure = True
+    plot_figure = False
     custom_cluster = False
 
     melSpec = np.load(join(path_input, f"{participant}_spec.npy"))
     feat = np.load(join(path_input, f"{participant}_feat.npy"))
 
-    makedirs("kmeans", exist_ok=True)
+    output_path = join(master_path, "results", "clustering", "kmeans")
+    makedirs(output_path, exist_ok=True)
 
     if custom_cluster:
         lbl = np.load(
             join(
-                "kmeans", f"{participant}_spec_cluster_{n_clusters}_kfold_{nfolds}.npy"
+                output_path,
+                f"{participant}_spec_{vocoder}_cluster_{n_clusters}_kfold_{nfolds}.npy",
             )
         )
         melSpec_centers = np.load(
             join(
-                "kmeans",
-                f"{participant}_spec_cluster_{n_clusters}_kfold_{nfolds}_centers.npy",
+                output_path,
+                f"{participant}_spec_{vocoder}_cluster_{n_clusters}_kfold_{nfolds}_centers.npy",
             )
         )
     else:
 
-        kf = KFold(nfolds, shuffle=False)
+        kf = utils.data.WindowedData(
+            melSpec,
+            melSpec,
+            window_size=1,
+            num_folds=nfolds,
+            output_size=-1,
+            DCT_coeffs=DCT_coeffs,
+            preprocessing=preprocessing_list,
+        )
 
         lbl = np.zeros((nfolds, melSpec.shape[0]), dtype=int)
         melSpec_centers = np.zeros([nfolds, n_clusters, melSpec.shape[1]])
-        for k, (train, test) in enumerate(kf.split(melSpec)):
+        for k, (train, test, whole) in enumerate(kf):
+            X_train, melSpec_train = next(train.generate_batch(-1))
+            X_whole, _ = next(whole.generate_batch(-1))
 
-            cluster_fcn = cluster if n_clusters > 2 else cluster_twostage
+            X_train = X_train.reshape(X_train.shape[0], -1)
+            X_whole = X_whole.reshape(X_whole.shape[0], -1)
+
+            melSpec_train = melSpec_train.reshape(melSpec_train.shape[0], -1)
+
+            cluster_fcn = cluster_twostage if n_clusters > 2 else cluster
             lbl[k], melSpec_centers[k] = cluster_fcn(
-                n_clusters, melSpec, train, test, pca_components
+                n_clusters,
+                X_train,
+                X_whole,
+                melSpec_train,
             )
+            correlation = None
 
-            print("K", k, "Score", round(score(lbl[k, test], melSpec[test]), 3))
+            # center_melSpec = np.stack(
+            #     tuple(melSpec_centers[k][x] for x in lbl[k]), axis=0
+            # )
+            # corrs = []
+            # for i in range(melSpec.shape[0]):
+            #     corrs.append(scipy.stats.pearsonr(melSpec[i], center_melSpec[i])[0])
+            # correlation = np.mean(corrs)
+
+            corr_s = f"Mean Correlation: {correlation:.3f}" if correlation else ""
+
+            print(f"K {k} Score: {score(lbl[k], X_whole):.3f}" + corr_s)
 
     if save_kmeans:
         np.save(
             join(
-                "kmeans",
+                output_path,
                 f"{participant}_spec_{vocoder}_cluster_{n_clusters}_kfold_{nfolds}.npy",
             ),
             lbl,
         )
         np.save(
             join(
-                "kmeans",
+                output_path,
                 f"{participant}_spec_{vocoder}_cluster_{n_clusters}_kfold_{nfolds}_centers.npy",
             ),
             melSpec_centers,
@@ -250,20 +318,21 @@ if __name__ == "__main__":
         original_audio = scipy.io.wavfile.read(
             join(path_input, f"{participant}_orig_synthesized.wav")
         )
-        original_audio = scipy.signal.decimate(original_audio[1], 160)
-        plot(lbl[k], melSpec, original_audio, 500)
-        # plot_dendrogram(clustering, truncate_mode="level", p=3)
+        original_audio = original_audio[1] / 2**15
+        ratio = original_audio.shape[0] // X_whole.shape[0]
+
+        plot(lbl[k], X_whole, original_audio, 400, ratio)
         hist = plot_hist(lbl[k])
         np.save(
             join(
-                "kmeans",
+                output_path,
                 f"{participant}_spec_{vocoder}_cluster_{n_clusters}_fold_{k}_hist.npy",
             ),
             hist,
         )
         plt.savefig(
             join(
-                "kmeans",
+                output_path,
                 f"{participant}_spec_{vocoder}_cluster_{n_clusters}_fold_{k}_hist.png",
             )
         )
@@ -271,7 +340,7 @@ if __name__ == "__main__":
     if save_reconstructed:
         k = 0
         output_file_name = join(
-            "kmeans",
+            output_path,
             f"{participant}_wave_{vocoder}_cluster_{n_clusters}_fold_{k}_center_reconstructed.wav",
         )
         center_melSpec = np.stack(tuple(melSpec_centers[k][x] for x in lbl[k]), axis=0)

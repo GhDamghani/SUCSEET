@@ -1,32 +1,41 @@
 from sklearn.model_selection import KFold
 from prefetch_generator import background
 import numpy as np
+from . import preprocessing
 
 
 class WindowedDataset:
-    def __init__(self, X, y, window_size) -> None:
+    def __init__(
+        self,
+        X,
+        y,
+        window_size,
+        output_size,
+    ) -> None:
         self.X = X
         self.y = y
         self.window_size = window_size
+        self.output_size = output_size
         self.arg = np.arange(len(X))
 
     def shuffle(self):
         """Shuffle both X and y but keeping the correspondence between the indices"""
         indices = np.random.permutation(len(self.X))
-        self.X = self.X[indices]
-        self.y = self.y[indices]
         self.arg = self.arg[indices]
 
     def sort(self):
         argsort = np.argsort(self.arg)
-        self.X = self.X[argsort]
-        self.y = self.y[argsort]
         self.arg = self.arg[argsort]
 
     def __getitem__(self, index):
         return (
-            self.X[index : index + self.window_size],
-            self.y[index + self.window_size - 1 : index + self.window_size],
+            self.X[self.arg[index] : self.arg[index] + self.window_size],
+            self.y[
+                self.arg[index]
+                + self.window_size
+                - self.output_size : self.arg[index]
+                + self.window_size
+            ],
         )
 
     def __len__(self):
@@ -61,7 +70,9 @@ class WindowedDataset:
         X = np.empty(
             (batch_size, self.window_size, self.X.shape[1]), dtype=self.X.dtype
         )
-        y = np.empty((batch_size,), dtype=self.y.dtype)
+        y = np.empty(
+            (batch_size, self.output_size, *self.y.shape[1:]), dtype=self.y.dtype
+        )
         for i, (x0, y0) in enumerate(self):
             X[i % batch_size] = x0
             y[i % batch_size] = y0
@@ -82,8 +93,10 @@ class WindowedMultiDataset:
         return self.lengths_accum[-1]
 
     def __getitem__(self, index):
-        i = np.where(self.lengths_accum > index)[0][0]
-        return self.datasets[i][index - self.lengths[i - 1] if i > 0 else index]
+        i = np.where(self.lengths_accum > self.arg[index])[0][0]
+        return self.datasets[i][
+            self.arg[index] - self.lengths[i - 1] if i > 0 else self.arg[index]
+        ]
 
     def shuffle(self):
         indices = np.random.permutation(len(self))
@@ -119,7 +132,10 @@ class WindowedMultiDataset:
             (batch_size, self.datasets[0].window_size, self.datasets[0].X.shape[1]),
             dtype=self.datasets[0].X.dtype,
         )
-        y = np.empty((batch_size,), dtype=self.datasets[0].y.dtype)
+        y = np.empty(
+            (batch_size, self.datasets[0].output_size, *self.datasets[0].y.shape[1:]),
+            dtype=self.datasets[0].y.dtype,
+        )
         for i, x in enumerate(self.arg):
             x0, y0 = self[x]
             X[i % batch_size] = x0
@@ -131,11 +147,33 @@ class WindowedMultiDataset:
 
 
 class WindowedData:
-    def __init__(self, feat, cluster, window_size=1, num_folds=10):
-        self.feat = feat
-        self.cluster = cluster
+    preprocessing_dict = {
+        "normalize": preprocessing.normalize,
+        "DCT": preprocessing.DCT,
+    }
+
+    def __init__(
+        self,
+        X,
+        y,
+        window_size=1,
+        num_folds=10,
+        output_size=-1,
+        DCT_coeffs=None,
+        preprocessing=None,
+    ) -> None:
+        self.X = X
+        if y.shape[0] != num_folds:
+            y = np.stack([y] * num_folds, axis=0)
+        self.y = y
         self.window_size = window_size
         self.kf = KFold(n_splits=num_folds, shuffle=False)
+        if output_size == -1:
+            self.output_size = window_size
+        else:
+            self.output_size = output_size
+        self.DCT_coeffs = DCT_coeffs
+        self.preprocessing = preprocessing
 
     @staticmethod
     def segment(ind):
@@ -149,20 +187,29 @@ class WindowedData:
         return segments
 
     def __iter__(self):
-        for k, (train_index, test_index) in enumerate(self.kf.split(self.feat)):
+        for k, (train_index, test_index) in enumerate(self.kf.split(self.X)):
+            X = self.X
+            for fcn in self.preprocessing:
+                X = self.preprocessing_dict[fcn](X[train_index], X)
+            if self.DCT_coeffs:
+                X = X[:, : self.DCT_coeffs]
             whole_dataset = WindowedDataset(
-                self.feat, self.cluster[k], self.window_size
+                X, self.y[k], self.window_size, self.output_size
             )
             test_dataset = WindowedDataset(
-                self.feat[test_index], self.cluster[k, test_index], self.window_size
+                X[test_index],
+                self.y[k, test_index],
+                self.window_size,
+                self.output_size,
             )
             train_segments = self.segment(train_index)
             train_datasets = []
             for train_segment in train_segments:
                 train_dataset = WindowedDataset(
-                    self.feat[train_segment],
-                    self.cluster[k, train_segment],
+                    X[train_segment],
+                    self.y[k, train_segment],
                     self.window_size,
+                    self.output_size,
                 )
                 train_datasets.append(train_dataset)
             train_dataset = WindowedMultiDataset(*train_datasets)

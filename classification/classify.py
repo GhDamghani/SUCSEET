@@ -21,42 +21,53 @@ import utils
 def main():
     num_classes = 2
     participant = "sub-06"  # "p07_ses1_sentences"
-    nfolds = 5
+    nfolds = 10
     dataset_type = "Word"
 
-    vocoder = "Griffin_Lim"  # "VocGAN"
+    vocoder = "VocGAN"  # "Griffin_Lim"
     clf_name = "LDA"  # "HistGrad"
     method = "onestage"
+    clf_dict = {
+        "onestage": classifier.clf_onestage,
+        "twostage": classifier.clf_twostage,
+    }
     clustering_method = "kmeans"
 
-    window_size = 40
-    pca_components = 150
+    window_size = 5
+    pca_components = None
 
     save_reconstruction = False
 
-    path_input = join(master_path, "dataset", dataset_type, vocoder)
-    system_type = "SISO" if window_size == 1 else "MISO"
+    dataset_path = join(master_path, "dataset", dataset_type, vocoder)
+    cluster_path = join(
+        master_path,
+        "results",
+        "clustering",
+        clustering_method,
+    )
 
-    if system_type == "MISO":
-        output_path = join(system_type, f"{window_size}", clf_name)
-    else:
-        output_path = join(system_type, clf_name)
+    output_path = join(
+        master_path,
+        "results",
+        "classification",
+        f"{window_size}",
+        clf_name,
+    )
 
     makedirs(output_path, exist_ok=True)
 
-    melSpec = np.load(join(path_input, f"{participant}_spec.npy"))
-    feat = np.load(join(path_input, f"{participant}_feat.npy"))
+    melSpec = np.load(join(dataset_path, f"{participant}_spec.npy"))
+    feat = np.load(join(dataset_path, f"{participant}_feat.npy"))
     cluster = np.load(
         join(
-            master_path,
-            "clustering",
-            clustering_method,
+            cluster_path,
             f"{participant}_spec_{vocoder}_cluster_{num_classes}_kfold_{nfolds}.npy",
         )
     )
     melSpec_centers = np.load(
         join(
             master_path,
+            "results",
             "clustering",
             clustering_method,
             f"{participant}_spec_{vocoder}_cluster_{num_classes}_kfold_{nfolds}_centers.npy",
@@ -64,12 +75,14 @@ def main():
     )
 
     kf = utils.data.WindowedData(
-        feat, cluster, window_size=window_size, num_folds=nfolds
+        feat, cluster, window_size=window_size, num_folds=nfolds, output_size=1
     )
 
     y_pred = dict()
 
-    print(clf_name, pca_components, method, window_size)
+    print(
+        f"Classifier: {clf_name} PCA: {pca_components}, Method: {method}, Window Size: {window_size}"
+    )
 
     for k, (train, test, whole) in enumerate(kf):
         X_train, y_train = next(train.generate_batch(-1))
@@ -80,10 +93,11 @@ def main():
         X_test = X_test.reshape(X_test.shape[0], -1)
         X_whole = X_whole.reshape(X_whole.shape[0], -1)
 
-        clf_fcn = {
-            "onestage": classifier.clf_onestage,
-            "twostage": classifier.clf_twostage,
-        }[method]
+        y_train = y_train.ravel()
+        y_test = y_test.ravel()
+        y_whole = y_whole.ravel()
+
+        clf_fcn = clf_dict[method]
 
         y_pred_prb_train, y_pred_prb_test, y_pred_prb_whole = clf_fcn(
             clf_name,
@@ -109,7 +123,7 @@ def main():
         )
         plt.gcf().set_size_inches(8, 8)
         plt.title(
-            f"{participant}, {num_classes} classes, {clf_name}, {method} method\n Vocoder: {vocoder} PCA components: {pca_components}\nkfold iteration: {k} Accuracy: {acc_test:.3%} (train: {acc_train:.3%})"
+            f"{participant}, {num_classes} classes, {clf_name}, {method} method\n Vocoder: {vocoder}, PCA components: {pca_components}\nkfold iteration: {k} Accuracy: {acc_test:.3%} (train: {acc_train:.3%})"
         )
         plt.savefig(
             join(

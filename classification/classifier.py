@@ -9,7 +9,7 @@ from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.neural_network import MLPClassifier
-from sklearn.decomposition import PCA
+from sklearn.decomposition import PCA, FastICA
 
 from functools import partial
 
@@ -18,7 +18,7 @@ mlp_classifier = partial(MLPClassifier, early_stopping=True, l2_regularization=0
 lda = LinearDiscriminantAnalysis
 qda = QuadraticDiscriminantAnalysis
 hist_gradboost = partial(
-    HistGradientBoostingClassifier, early_stopping=True, l2_regularization=1
+    HistGradientBoostingClassifier, early_stopping=True, l2_regularization=10
 )
 adaboost = AdaBoostClassifier
 
@@ -40,6 +40,7 @@ def get_clf(clf_name, **kwargs):
         raise ValueError
 
 
+# TODO: correct this is one-stage
 def clf_twostage(
     clf_name, X_train, X_test, y_train, y_test, X_whole, y_whole, pca_components=None
 ):
@@ -111,15 +112,12 @@ def twostage_predictor(X, step1, step2):
     return y_prb
 
 
-def clf_onestage(
-    clf_name, X_train, X_test, y_train, y_test, X_whole, y_whole, pca_components=None
-):
-    steps = [StandardScaler(), get_clf(clf_name)]
+def clf_onestage(clf_name, X_train, X_test, y_train, y_test, pca_components=None):
+    steps = [StandardScaler(), get_clf(clf_name)]  #
     if pca_components is not None:
         steps.insert(1, PCA(n_components=pca_components))
     clf = make_pipeline(*steps)
     clf.fit(X_train, y_train)
     y_prb_train = clf.predict_proba(X_train)
     y_prb_test = clf.predict_proba(X_test)
-    y_prb_whole = clf.predict_proba(X_whole)
-    return y_prb_train, y_prb_test, y_prb_whole
+    return y_prb_train, y_prb_test

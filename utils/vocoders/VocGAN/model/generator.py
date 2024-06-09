@@ -571,7 +571,7 @@ class ModifiedGenerator(nn.Module):
 
         def _apply_weight_norm(m):
             if isinstance(m, conv1d) or isinstance(m, convTranspose1d):
-                torch.nn.utils.weight_norm(m)
+                torch.nn.utils.parametrizations.weight_norm(m)
 
         self.apply(_apply_weight_norm)
 

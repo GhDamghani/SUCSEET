@@ -40,20 +40,18 @@ def main(config):
         train_dataset, val_dataset = next(dataset)
 
     model = SpeechDecodingModel_clf(
-        config.d_model,
-        config.num_heads,
-        config.dim_feedforward,
+        config.feat_size,
+        config.hidden_size,
         config.num_layers,
         config.num_classes,
-        config.window_size,
-        config.feat_size,
-        config.output_indices,
         config.dropout,
     )
     loss, histogram_weights = loss_metrics.get_loss(
         train_dataset, config.num_classes, logger
     )
-    model_summary = model.__str__(config.BATCH_SIZE)
+    model_summary = model.__str__(
+        config.BATCH_SIZE, config.window_size, config.feat_size
+    )
     logger(model_summary, model=True)
     if config.fold == 0:
         shutil.copyfile(logger_file, config.file_names.file[:-2] + "all_model.txt")
@@ -101,8 +99,8 @@ if __name__ == "__main__":
     from itertools import product
 
     # participants = ["sub-06"]  # [f"sub-{i:02d}" for i in range(1, 11)]
-    folds = [0, 1]  # [i for i in range(10)]
-    nums_classes = (5,)
+    folds = (0, 1)  # [i for i in range(10)]  #
+    nums_classes = (5,)  # (2, 5)
 
     miniconfigs = [
         {"num_classes": num_classes, "fold": fold}

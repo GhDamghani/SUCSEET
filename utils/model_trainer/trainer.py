@@ -2,6 +2,8 @@ import torch
 from tqdm import tqdm
 import numpy as np
 from os.path import join
+import csv
+from tempfile import TemporaryFile
 
 
 class Trainer:
@@ -20,7 +22,8 @@ class Trainer:
         scheduler=None,
         log_times=10,
         device="cpu",
-        output_path=".",
+        output_file_name="model",
+        patience=20,
     ) -> None:
         self.model = model
         self.val_dataset = val_dataset
@@ -42,7 +45,8 @@ class Trainer:
         self.metrics_val["loss"] = 0
 
         self.device = device
-        self.output_path = output_path
+
+        self.output_file_name = output_file_name
 
         if not self.test_mode:
             self.log_interval = (
@@ -50,7 +54,7 @@ class Trainer:
                 if log_times is not None
                 else len(self.train_dataset) + 1
             )
-            self.patience = self.epochs
+            self.patience = patience
 
             self.metrics_train = {key: 0 for key in self.metrics}
             self.metrics_interval = {key: 0 for key in self.metrics}
@@ -59,6 +63,17 @@ class Trainer:
 
             self.lowest_val_loss = float("inf")
             self.best_epoch = 0
+
+            self.val_log_file_path = join(self.output_file_name + "_val_log.csv")
+            self.train_log_file_path = join(self.output_file_name + "_train_log.csv")
+
+            with open(self.val_log_file_path, "w") as f:
+                writer = csv.DictWriter(f, fieldnames=tuple(self.metrics_val))
+                writer.writeheader()
+
+            with open(self.train_log_file_path, "w") as f:
+                writer = csv.DictWriter(f, fieldnames=tuple(self.metrics_train))
+                writer.writeheader()
 
     def update_metrics(self, pred, y, *dicts):
         with torch.no_grad():
@@ -71,13 +86,19 @@ class Trainer:
         X = torch.from_numpy(X).float().to(self.device)
         if self.model_task == "classification":
             y = torch.from_numpy(np.squeeze(y)).long()
+            y = y.reshape(
+                -1,
+            )
         elif self.model_task == "regression":
             y = torch.from_numpy(y).float()
         return X, y
 
     def step(self, X, y):
         pred = self.model(X).cpu()
-        loss = self.loss(pred, y)
+        loss = self.loss(
+            pred,
+            y,
+        )
         return pred, loss
 
     def train_(self):
@@ -85,7 +106,7 @@ class Trainer:
         for key in self.metrics_train:
             self.metrics_train[key] = 0
             self.metrics_interval[key] = 0
-        with open("tqdm_batch.log", "w") as file:
+        with TemporaryFile(mode="w") as file:
             progress_bar = tqdm(
                 self.train_dataset.generate_batch(self.batch_size, shuffle=True),
                 file=file,
@@ -94,6 +115,7 @@ class Trainer:
             iterator = enumerate(progress_bar)
             for self.batch_i, (X, y) in iterator:
                 X, y = self.totorch(X, y)
+
                 pred, loss = self.step(X, y)
 
                 self.optimizer.zero_grad()
@@ -105,11 +127,11 @@ class Trainer:
                 self.metrics_interval["loss"] += loss.item() * len(y)
 
                 if torch.isnan(torch.tensor(loss.item())).item():
-                    pass
+                    return False
 
                 if (self.batch_i + 1) % self.log_interval == 0:
 
-                    loss_str = f"Loss: {self.metrics_interval['loss']/self.metrics_interval['total']:.5g}"
+                    loss_str = f"Loss: {self.metrics_interval['loss']/self.metrics_interval['total']:-7.5g}"
                     self.metrics_interval["loss"] = 0
 
                     if self.model_task == "classification":
@@ -128,10 +150,14 @@ class Trainer:
 
             loss_str = f"Train Loss: {self.metrics_train['loss']/self.metrics_train['total']:.5g}"
             left_str = f"Epoch {self.epoch_i} {loss_str}"
+
             if self.model_task == "classification":
                 acc_str = f" Accuracy: {self.metrics_train['corrects']/self.metrics_train['total']:02.2%}"
                 left_str += acc_str
             self.logger(left_str)
+            with open(self.train_log_file_path, "a") as f:
+                writer = csv.DictWriter(f, fieldnames=self.metrics_train.keys())
+                writer.writerow(self.metrics_train)
 
     def validate(self, return_data=False):
         self.model.eval()
@@ -142,6 +168,8 @@ class Trainer:
         for key in self.metrics_val:
             self.metrics_val[key] = 0
         with torch.no_grad():
+            if not hasattr(self.model, "output_indices"):
+                self.model.output_indices = [-1]
             for X, y in self.val_dataset.generate_batch(self.batch_size):
                 X, y = self.totorch(X, y)
                 pred, loss = self.step(X, y)
@@ -150,8 +178,12 @@ class Trainer:
                 self.metrics_val["loss"] += loss.item() * len(y)
 
                 if return_data:
-                    pred_all.append(pred.numpy())
-                    y_all.append(y.numpy())
+                    pred_all.append(
+                        pred.reshape(
+                            -1, len(self.model.output_indices), self.model.num_classes
+                        ).numpy()
+                    )
+                    y_all.append(y.reshape(-1, len(self.model.output_indices)).numpy())
         if not (self.test_mode):
             loss_str = (
                 f"  Val Loss: {self.metrics_val['loss']/self.metrics_val['total']:.5g}"
@@ -165,6 +197,10 @@ class Trainer:
                 acc_str = f" Accuracy: {self.metrics_val['corrects']/self.metrics_val['total']:02.2%}"
                 left_str += acc_str
             self.logger(left_str)
+
+            with open(self.val_log_file_path, "a") as f:
+                writer = csv.DictWriter(f, fieldnames=self.metrics_val.keys())
+                writer.writerow(self.metrics_val)
         if return_data:
             pred_all = np.concatenate(pred_all)
             y_all = np.concatenate(y_all)
@@ -174,7 +210,7 @@ class Trainer:
 
     def train(self):
         self.lr = self.optimizer.param_groups[0]["lr"]
-        with open("tqdm_epoch.log", "w") as file:
+        with TemporaryFile(mode="w") as file:
             progress_bar = tqdm(
                 range(self.epochs),
                 file=file,
@@ -190,14 +226,17 @@ class Trainer:
                 )
                 self.logger(f"{epoch_str} {lr_str} {progress_bar}", right="=")
 
-                self.train_()
+                flag = self.train_()
+                if flag == False:
+                    self.logger("Stop training due to NaN loss")
+                    return
                 self.validate()
 
                 if self.metrics_val["loss"] < self.lowest_val_loss:
                     self.best_epoch = epoch_i
                     self.lowest_val_loss = self.metrics_val["loss"]
                     torch.save(
-                        self.model.state_dict(), join(self.output_path, "model.pth")
+                        self.model.state_dict(), self.output_file_name + "_model.pth"
                     )
                     self.logger("*")
                     self.logger(f"Best Epoch! Model Saved", right="*")
@@ -210,7 +249,7 @@ class Trainer:
                         f"Early stopping after {self.patience} epochs of no new best epoch",
                     )
                     self.logger("&")
-                    break
+                    return
 
                 #### Learning Rate Scheduler ####
                 if self.scheduler is not None:
@@ -222,3 +261,4 @@ class Trainer:
                             right=" ",
                         )
                     self.logger("=")
+        print(f"Training Complete! {self.output_file_name}")

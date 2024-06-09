@@ -28,14 +28,12 @@ class Config:
         self.DEVICE = device("cuda" if cuda.is_available() else "cpu")
 
         self.clustering_method = "kmeans"
-        self.clf_name = "Transformer_Encoder"
+        self.clf_name = "RNN"
 
         self.num_classes = 2
         self.window_size = 40
-        self.d_model = 128
-        self.dim_feedforward = 2048
-        self.num_heads = 8
-        self.num_layers = 6
+        self.hidden_size = 128
+        self.num_layers = 3
         self.dropout = 0.1
         self.optimizer = partial(optim.Adam, lr=1e-5, weight_decay=1e-2, amsgrad=True)
         self.BATCH_SIZE = 32

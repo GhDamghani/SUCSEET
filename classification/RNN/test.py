@@ -84,14 +84,10 @@ def get_test_results(config):
         train_dataset, val_dataset = next(dataset)
 
     model = SpeechDecodingModel_clf(
-        config.d_model,
-        config.num_heads,
-        config.dim_feedforward,
+        config.feat_size,
+        config.hidden_size,
         config.num_layers,
         config.num_classes,
-        config.window_size,
-        config.feat_size,
-        config.output_indices,
         config.dropout,
     )
     model.to(config.DEVICE)
@@ -273,10 +269,10 @@ def main():
         config0 = config.Config()
         config0.participant = miniconfig["participant"]
         config0.num_classes = miniconfig["num_classes"]
-        # save_test_results(config0)
+        save_test_results(config0)
         save_stats(config0)
         save_post_results(config0)
-        break
+        # break
 
     # miniconfigs[0]["fold"] = folds[0]
     # main(miniconfigs[0], isfolds=True)
@@ -289,3 +285,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # import os
+
+    # os.system("shutdown /s /t 1")

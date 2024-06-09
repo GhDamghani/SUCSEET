@@ -8,45 +8,6 @@ import math
 import numpy as np
 
 
-class SpeechDecodingModel_reg(nn.Module):
-    def __init__(
-        self,
-        d_model,
-        num_heads,
-        num_layers,
-        window_size,
-        num_eeg_channels,
-        output_size,
-        dropout=0.1,
-    ):
-        super().__init__()
-        self.window_size = window_size
-        self.num_eeg_channels = num_eeg_channels
-
-        self.encoder_prenet_mlp = nn.Linear(num_eeg_channels, d_model)
-        self.encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=num_heads, dropout=dropout, batch_first=True
-        )
-        self.transformer_encoder = nn.TransformerEncoder(
-            self.encoder_layer, num_layers=num_layers
-        )
-        self.regressor = nn.Linear(d_model, output_size)
-
-    def forward(self, x):
-        x = self.encoder_prenet_mlp(x)
-        x = self.transformer_encoder(x)
-        x = self.regressor(x)
-        return x
-
-    def __str__(self, batch_size=1):
-        return summary(
-            self,
-            input_size=(batch_size, self.window_size, self.num_eeg_channels),
-            verbose=0,
-            depth=4,
-        ).__repr__()
-
-
 class SpeechDecodingModel_clf(nn.Module):
     def __init__(
         self,
@@ -56,45 +17,46 @@ class SpeechDecodingModel_clf(nn.Module):
         num_layers,
         num_classes,
         window_size,
-        num_eeg_channels,
+        feat_size,
+        output_indices=[-1],
         dropout=0.1,
     ):
         super().__init__()
         self.window_size = window_size
-        self.num_eeg_channels = num_eeg_channels
+        self.feat_size = feat_size
         self.num_classes = num_classes
         self.d_model = d_model
+        self.output_indices = output_indices
 
-        self.encoder_prenet_mlp = nn.Sequential(
-            nn.Linear(num_eeg_channels, num_eeg_channels),
-            nn.BatchNorm1d(window_size),
-            nn.ReLU(),
-            nn.Linear(num_eeg_channels, d_model),
-            nn.BatchNorm1d(window_size),
-            nn.ReLU(),
+        prenet_layers = 1
+        prenet_nodes = np.geomspace(feat_size, d_model, num=prenet_layers + 1).astype(
+            int
         )
+        prenet_list = []
+        for i in range(prenet_layers):
+            prenet_list.append(nn.Linear(prenet_nodes[i], prenet_nodes[i + 1]))
+            prenet_list.append(nn.ReLU())
+            prenet_list.append(nn.BatchNorm1d(window_size))
+
+        self.prenet = nn.Sequential(*prenet_list)
         self.encoder = EncoderModel(
             d_model, num_heads, dropout, num_layers, dim_feedforward, pos=False
         )
-        self.clf = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.BatchNorm1d(1),
-            nn.ReLU(),
+        self.clf_head = nn.Sequential(
             nn.Linear(d_model, num_classes),
-            nn.Softmax(-1),  # nn.Softmax(-1),
         )
-        self.scale_factor = nn.Parameter(torch.ones(1) * 5, requires_grad=True)
+        self.num_classes = num_classes
 
     def forward(self, x):
-        x = self.encoder_prenet_mlp(x)
+        x = self.prenet(x)
         x = self.encoder(x)
-        x = x[:, -1:, :]
-        return self.clf(x).squeeze(1) * self.scale_factor
+        x = x[:, self.output_indices, :]
+        return self.clf_head(x).squeeze(1).reshape(-1, self.num_classes)
 
     def __str__(self, batch_size=1):
         return summary(
             self,
-            input_size=(batch_size, self.window_size, self.num_eeg_channels),
+            input_size=(batch_size, self.window_size, self.feat_size),
             verbose=0,
             depth=4,
         ).__repr__()
@@ -128,20 +90,20 @@ class EncoderPrenet(nn.Module):
         x = self.layers(x)
         x = self.linear(x).squeeze(-1)
         x = torch.permute(x, (0, 2, 1))
-        return x
+        return torch.nn.functional.softmax(x, -1)
 
 
 class EncoderPrenetMLP(nn.Module):
-    def __init__(self, d_model, window_size, num_eeg_channels):
+    def __init__(self, d_model, window_size, feat_size):
         super().__init__()
         self.fc1 = nn.Sequential(
             nn.Linear(window_size, d_model * 8),
             nn.ReLU(),
-            nn.BatchNorm1d(num_eeg_channels),
+            nn.BatchNorm1d(feat_size),
             nn.Linear(d_model * 8, d_model * 8),
             nn.ReLU(),
             nn.Linear(d_model * 8, d_model),
-            nn.BatchNorm1d(num_eeg_channels),
+            nn.BatchNorm1d(feat_size),
         )
 
     def forward(self, x):
@@ -203,7 +165,7 @@ if __name__ == "__main__":
     num_layers = 2
     num_classes = 20
     window_size = 96
-    num_eeg_channels = 127
+    feat_size = 127
     dropout_prenet = 0
     dropout_encoder = 0
     model = SpeechDecodingModel_clf(
@@ -213,7 +175,7 @@ if __name__ == "__main__":
         num_layers,
         num_classes,
         window_size,
-        num_eeg_channels,
+        feat_size,
         dropout_prenet,
         dropout_encoder,
     )

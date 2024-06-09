@@ -10,12 +10,13 @@ class WindowedDataset:
         X,
         y,
         window_size,
-        output_size,
+        output_indices,
     ) -> None:
         self.X = X
         self.y = y
         self.window_size = window_size
-        self.output_size = output_size
+        self.output_indices = output_indices
+        self.output_size = len(output_indices)
         self.arg = np.arange(len(X))
 
     def shuffle(self):
@@ -30,11 +31,8 @@ class WindowedDataset:
     def __getitem__(self, index):
         return (
             self.X[self.arg[index] : self.arg[index] + self.window_size],
-            self.y[
-                self.arg[index]
-                + self.window_size
-                - self.output_size : self.arg[index]
-                + self.window_size
+            self.y[self.arg[index] : self.arg[index] + self.window_size][
+                self.output_indices
             ],
         )
 
@@ -43,7 +41,7 @@ class WindowedDataset:
 
     @background(max_prefetch=10)
     def __iter__(self):
-        for i in range(len(self.X) + 1 - self.window_size):
+        for i in range(len(self)):
             yield self[i]
 
     def generate_batch(self, batch_size, shuffle=False, sort=False):
@@ -79,7 +77,7 @@ class WindowedDataset:
             if (i + 1) % batch_size == 0:
                 yield X, y
         if i % batch_size > 0:
-            yield X[: i % batch_size], y[: i % batch_size]
+            yield X[: (i + 1) % batch_size], y[: (i + 1) % batch_size]
 
 
 class WindowedMultiDataset:
@@ -147,10 +145,6 @@ class WindowedMultiDataset:
 
 
 class WindowedData:
-    preprocessing_dict = {
-        "normalize": preprocessing.normalize,
-        "DCT": preprocessing.DCT,
-    }
 
     def __init__(
         self,
@@ -158,9 +152,7 @@ class WindowedData:
         y,
         window_size=1,
         num_folds=10,
-        output_size=-1,
-        DCT_coeffs=None,
-        preprocessing=None,
+        output_indices=(-1,),
     ) -> None:
         self.X = X
         if y.shape[0] != num_folds:
@@ -168,12 +160,7 @@ class WindowedData:
         self.y = y
         self.window_size = window_size
         self.kf = KFold(n_splits=num_folds, shuffle=False)
-        if output_size == -1:
-            self.output_size = window_size
-        else:
-            self.output_size = output_size
-        self.DCT_coeffs = DCT_coeffs
-        self.preprocessing = preprocessing
+        self.output_indices = output_indices
 
     @staticmethod
     def segment(ind):
@@ -187,30 +174,23 @@ class WindowedData:
         return segments
 
     def __iter__(self):
-        for k, (train_index, test_index) in enumerate(self.kf.split(self.X)):
+        for fold, (train_index, test_index) in enumerate(self.kf.split(self.X)):
             X = self.X
-            for fcn in self.preprocessing:
-                X = self.preprocessing_dict[fcn](X[train_index], X)
-            if self.DCT_coeffs:
-                X = X[:, : self.DCT_coeffs]
-            whole_dataset = WindowedDataset(
-                X, self.y[k], self.window_size, self.output_size
-            )
             test_dataset = WindowedDataset(
                 X[test_index],
-                self.y[k, test_index],
+                self.y[fold, test_index],
                 self.window_size,
-                self.output_size,
+                self.output_indices,
             )
             train_segments = self.segment(train_index)
             train_datasets = []
             for train_segment in train_segments:
                 train_dataset = WindowedDataset(
                     X[train_segment],
-                    self.y[k, train_segment],
+                    self.y[fold, train_segment],
                     self.window_size,
-                    self.output_size,
+                    self.output_indices,
                 )
                 train_datasets.append(train_dataset)
             train_dataset = WindowedMultiDataset(*train_datasets)
-            yield train_dataset, test_dataset, whole_dataset
+            yield train_dataset, test_dataset  # , (train_index, test_index)

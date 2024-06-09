@@ -22,6 +22,8 @@ def logger_fcn(s, logger, right=None, model=False):
 
 
 def get_logger(logging_file, filemode):
+    if logging_file is None:
+        return lambda *x: None  # Dummy logger
     logger = logging.getLogger(__name__)
     logging.basicConfig(
         filename=logging_file,

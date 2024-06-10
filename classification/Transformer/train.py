@@ -101,20 +101,22 @@ if __name__ == "__main__":
     from itertools import product
 
     # participants = ["sub-06"]  # [f"sub-{i:02d}" for i in range(1, 11)]
-    folds = [0, 1]  # [i for i in range(10)]
-    nums_classes = (5,)
+    folds = [i for i in range(10)]  # [0, 1]
+    nums_classes = (2, 5)
 
     miniconfigs = [
         {"num_classes": num_classes, "fold": fold}
         for num_classes, fold in product(nums_classes, folds)
     ]
     # train_main(miniconfigs[0])
+    # for miniconfig in miniconfigs:
+    #     train_main(miniconfig)
     with Pool(processes=4) as pool:
         pool.map(train_main, miniconfigs)
 
-    # import test
+    import test
 
-    # test.main()
-    # import os
+    test.main()
+    import os
 
-    # os.system("shutdown /s /t 1")
+    os.system("shutdown /s /t 1")

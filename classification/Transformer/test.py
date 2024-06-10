@@ -273,10 +273,9 @@ def main():
         config0 = config.Config()
         config0.participant = miniconfig["participant"]
         config0.num_classes = miniconfig["num_classes"]
-        # save_test_results(config0)
+        save_test_results(config0)
         save_stats(config0)
         save_post_results(config0)
-        break
 
     # miniconfigs[0]["fold"] = folds[0]
     # main(miniconfigs[0], isfolds=True)

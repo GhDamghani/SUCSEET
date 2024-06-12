@@ -1,1 +1,1 @@
-# Deep Neural Speech Decoding with Linguistics
+# SUC-SEET: Speech Unit Classification from Stereotactic EEG using Transformer Models

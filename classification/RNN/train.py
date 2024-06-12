@@ -3,7 +3,6 @@ import numpy as np
 from os.path import join
 import loss_metrics
 import shutil
-
 from model import SpeechDecodingModel_clf
 
 import sys
@@ -13,7 +12,7 @@ sys.path.append(master_path)
 
 import utils
 from utils.model_trainer.trainer import Trainer
-from utils.model_trainer.logger import get_logger
+from utils.model_trainer.logger import Logger
 
 
 def main(config):
@@ -25,7 +24,7 @@ def main(config):
     np.random.seed(config.SEED)
 
     logger_file = join("logs", f"train-{config.file_names.local}.log")
-    logger = get_logger(logger_file, "w")
+    logger = Logger(logger_file)
 
     dataset = iter(
         utils.data.WindowedData(
@@ -46,23 +45,21 @@ def main(config):
         config.num_classes,
         config.dropout,
     )
-    loss, histogram_weights = loss_metrics.get_loss(
-        train_dataset, config.num_classes, logger
-    )
+    loss, histogram_weights = loss_metrics.get_loss(train_dataset, config.num_classes)
     model_summary = model.__str__(
         config.BATCH_SIZE, config.window_size, config.feat_size
     )
-    logger(model_summary, model=True)
+    logger.log(model_summary, model=True)
     if config.fold == 0:
         shutil.copyfile(logger_file, config.file_names.file[:-2] + "all_model.txt")
         shutil.copyfile("model.py", config.file_names.file[:-2] + "model.py")
     model.to(config.DEVICE)
 
-    logger("Starting", right="=")
-    logger(f"Train dataset length      : {len(train_dataset):5d}")
-    logger(f"Validation dataset length : {len(val_dataset):5d}")
+    logger.log("Starting", right="=")
+    logger.log(f"Train dataset length      : {len(train_dataset):5d}")
+    logger.log(f"Validation dataset length : {len(val_dataset):5d}")
     if config.model_task == "classification":
-        logger(f"Max histogram value       : {np.max(histogram_weights):5.2%}")
+        logger.log(f"Max histogram value       : {np.max(histogram_weights):5.2%}")
 
     # Define loss function and optimizer
     optimizer = config.optimizer(model.parameters())
@@ -81,6 +78,7 @@ def main(config):
         output_file_name=config.file_names.file,
     )
     trainer.train()
+    logger.close()
 
 
 def train_main(miniconfig):
@@ -98,14 +96,20 @@ if __name__ == "__main__":
     from multiprocessing import Pool
     from itertools import product
 
-    # participants = ["sub-06"]  # [f"sub-{i:02d}" for i in range(1, 11)]
-    folds = (0, 1)  # [i for i in range(10)]  #
-    nums_classes = (5,)  # (2, 5)
+    participants = [f"sub-{i:02d}" for i in range(1, 11) if i != 6]  # ["sub-06"]  #
+    nums_classes = (2, 5, 10, 20)
+    folds = [i for i in range(10)]  # (0, 1)  #   #
 
     miniconfigs = [
-        {"num_classes": num_classes, "fold": fold}
-        for num_classes, fold in product(nums_classes, folds)
+        {"participant": participant, "num_classes": num_classes, "fold": fold}
+        for participant, num_classes, fold in product(participants, nums_classes, folds)
     ]
+    miniconfigs.extend(
+        [
+            {"participant": "sub-06", "num_classes": num_classes, "fold": fold}
+            for num_classes, fold in product([10, 20], folds)
+        ]
+    )
     # train_main(miniconfigs[0])
     with Pool(processes=4) as pool:
         pool.map(train_main, miniconfigs)

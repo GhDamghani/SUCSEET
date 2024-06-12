@@ -31,6 +31,7 @@ def save_confusion_matrix(
     plt.gcf().set_size_inches(7, 7)
     plt.title(conf_mat_title)
     plt.savefig(file_name)
+    plt.close()
 
 
 def save_histograms(
@@ -56,8 +57,13 @@ def save_histograms(
     if extra_title:
         hist_suptitle += extra_title
 
+    labels = np.arange(num_classes)
+
     pred_labels_uniques, pred_counts = np.unique(y_pred_test_labels, return_counts=True)
-    labels, y_hist = np.unique(y_test, return_counts=True)
+    y_labels_uniques, y_counts = np.unique(y_test.astype(int), return_counts=True)
+
+    y_hist = np.zeros(num_classes)
+    y_hist[y_labels_uniques] = y_counts
     pred_hist = np.zeros(num_classes)
     pred_hist[pred_labels_uniques] = pred_counts
     total = np.sum(y_hist)
@@ -92,6 +98,7 @@ def save_histograms(
 
     plt.tight_layout()
     plt.savefig(file_name)
+    plt.close()
 
 
 def pearson_corr(x, y, axis=1):
@@ -164,10 +171,22 @@ def save_stats(
         if num_classes > 2:
 
             train_topk_corrects.append(
-                top_k_accuracy_score(y_train, y_pred_train, k=topk, normalize=False)
+                top_k_accuracy_score(
+                    y_train,
+                    y_pred_train,
+                    k=topk,
+                    normalize=False,
+                    labels=range(num_classes),
+                )
             )
             test_topk_corrects.append(
-                top_k_accuracy_score(y_test, y_pred_test, k=topk, normalize=False)
+                top_k_accuracy_score(
+                    y_test,
+                    y_pred_test,
+                    k=topk,
+                    normalize=False,
+                    labels=range(num_classes),
+                )
             )
 
         train_speech_mask = y_train != 0
@@ -195,12 +214,20 @@ def save_stats(
         if num_classes > 2:
             train_topk_corrects_speech.append(
                 top_k_accuracy_score(
-                    y_train_speech, y_pred_train_speech, k=topk, normalize=False
+                    y_train_speech,
+                    y_pred_train_speech,
+                    k=topk,
+                    normalize=False,
+                    labels=range(num_classes - 1),
                 )
             )
             test_topk_corrects_speech.append(
                 top_k_accuracy_score(
-                    y_test_speech, y_pred_test_speech, k=topk, normalize=False
+                    y_test_speech,
+                    y_pred_test_speech,
+                    k=topk,
+                    normalize=False,
+                    labels=range(num_classes - 1),
                 )
             )
 

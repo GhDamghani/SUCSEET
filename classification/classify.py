@@ -188,9 +188,9 @@ def train_and_save_clf(
     )
 
 
-def main():
-    num_classes = 5
-    participant = "sub-06"  # "p07_ses1_sentences"
+def main(miniconfig):
+    num_classes = miniconfig["num_classes"]  # 20
+    participant = miniconfig["participant"]  # "sub-06" "p07_ses1_sentences"
     nfolds = 10
     dataset_name = "Word"
 
@@ -269,7 +269,7 @@ def main():
         num_folds=nfolds,
     )
 
-    """ train_and_save_clf(
+    train_and_save_clf(
         file_names,
         clf_name,
         clf_dict,
@@ -278,7 +278,7 @@ def main():
         window_size,
         pca_components,
         melSpec_centers,
-    ) """
+    )
 
     clf_data = np.load(file_names.results + ".npy", allow_pickle=True).item()
 
@@ -342,4 +342,26 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    from multiprocessing import Pool
+    import time
+    from itertools import product
+
+    start_time = time.perf_counter()
+
+    participants = [f"sub-{i:02d}" for i in range(1, 11) if i != 6]
+
+    nums_classes = [2, 5, 10, 20]
+
+    miniconfigs = [
+        {"participant": participant, "num_classes": num_classes}
+        for participant, num_classes in product(participants, nums_classes)
+    ]
+
+    # main(miniconfigs[0])
+    for miniconfig in miniconfigs:
+        main(miniconfig)
+
+    # with Pool() as pool:
+    #     pool.map(main, miniconfigs)
+    end_time = time.perf_counter()
+    print(f"Done! Execution time: {end_time - start_time:.2f} seconds")

@@ -38,7 +38,7 @@ def main():
     method3["dir"] = join("40", "RNN")
     method3["name"] = "RNN"
 
-    methods = (method1, method2, method3)
+    methods = (method1, method2, method3)  #
     methods_size = len(methods)
 
     for i_method, method in enumerate(methods):
@@ -56,9 +56,10 @@ def main():
 
     width = 0.5 / methods_size
 
-    num_measures = 3
+    xticks = ["Accuracy", "MelSpec Corr"]
+    num_measures = len(xticks)
     if num_classes > 2:
-        num_measures += 2
+        num_measures += 3
     x = np.arange(num_measures)
 
     fig, ax = plt.subplots(layout="constrained", figsize=(8, 5))
@@ -67,32 +68,35 @@ def main():
             np.array(method["stats"]["test_corrects"])
             / np.array(method["stats"]["test_total"])
         )
-        test_speech_accuracy = np.mean(
-            np.array(method["stats"]["test_corrects_speech"])
-            / np.array(method["stats"]["test_total_speech"])
-        )
+
         test_melSpec_corr = np.mean(
             np.concatenate(method["stats"]["test_melSpec_corr"])
         )
-        measure = [test_accuracy, test_speech_accuracy, test_melSpec_corr]
+        measure = [test_accuracy, test_melSpec_corr]
 
         if num_classes > 2:
             test_topk_accuracy = np.mean(
                 np.array(method["stats"]["test_topk_corrects"])
                 / np.array(method["stats"]["test_total"])
             )
+            test_speech_accuracy = np.mean(
+                np.array(method["stats"]["test_corrects_speech"])
+                / np.array(method["stats"]["test_total_speech"])
+            )
             test_topk_speech_accuracy = np.mean(
                 np.array(method["stats"]["test_topk_corrects_speech"])
                 / np.array(method["stats"]["test_total_speech"])
             )
             measure.insert(1, test_topk_accuracy)
+            measure.insert(2, test_speech_accuracy)
             measure.insert(3, test_topk_speech_accuracy)
 
         rects = plt.bar(x + i_method * width, measure, width, label=method["name"])
         ax.bar_label(rects, padding=3, fmt="%.2f")
-    xticks = ["Accuracy", "Speech Accuracy", "MelSpec Corr"]
+
     if num_classes > 2:
         xticks.insert(1, f"Top-{topk} Accuracy")
+        xticks.insert(2, "Speech Accuracy")
         xticks.insert(3, f"Top-{topk} Speech Accuracy")
     ax.set_ylabel("Percentage")
     ax.set_title("Comparing Classification Models")

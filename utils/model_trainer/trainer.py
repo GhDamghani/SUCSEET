@@ -146,7 +146,7 @@ class Trainer:
                         left_str = f"{loss_str:12}"
                     self.metrics_interval["total"] = 0
                     right_str = str(progress_bar)
-                    self.logger(left_str, right=right_str)
+                    self.logger.log(left_str, right=right_str)
 
             loss_str = f"Train Loss: {self.metrics_train['loss']/self.metrics_train['total']:.5g}"
             left_str = f"Epoch {self.epoch_i} {loss_str}"
@@ -154,7 +154,7 @@ class Trainer:
             if self.model_task == "classification":
                 acc_str = f" Accuracy: {self.metrics_train['corrects']/self.metrics_train['total']:02.2%}"
                 left_str += acc_str
-            self.logger(left_str)
+            self.logger.log(left_str)
             with open(self.train_log_file_path, "a") as f:
                 writer = csv.DictWriter(f, fieldnames=self.metrics_train.keys())
                 writer.writerow(self.metrics_train)
@@ -196,7 +196,7 @@ class Trainer:
             if self.model_task == "classification":
                 acc_str = f" Accuracy: {self.metrics_val['corrects']/self.metrics_val['total']:02.2%}"
                 left_str += acc_str
-            self.logger(left_str)
+            self.logger.log(left_str)
 
             with open(self.val_log_file_path, "a") as f:
                 writer = csv.DictWriter(f, fieldnames=self.metrics_val.keys())
@@ -224,11 +224,11 @@ class Trainer:
                 lr_str = (
                     f"Lr: {self.optimizer.state_dict()['param_groups'][0]['lr']:.4g}"
                 )
-                self.logger(f"{epoch_str} {lr_str} {progress_bar}", right="=")
+                self.logger.log(f"{epoch_str} {lr_str} {progress_bar}", right="=")
 
                 flag = self.train_()
                 if flag == False:
-                    self.logger("Stop training due to NaN loss")
+                    self.logger.log("Stop training due to NaN loss")
                     return
                 self.validate()
 
@@ -238,17 +238,17 @@ class Trainer:
                     torch.save(
                         self.model.state_dict(), self.output_file_name + "_model.pth"
                     )
-                    self.logger("*")
-                    self.logger(f"Best Epoch! Model Saved", right="*")
-                    self.logger("*")
+                    self.logger.log("*")
+                    self.logger.log(f"Best Epoch! Model Saved", right="*")
+                    self.logger.log("*")
                 else:
-                    self.logger(f"Not a Progressive Epoch!")
+                    self.logger.log(f"Not a Progressive Epoch!")
                 if self.epoch_i - self.best_epoch >= self.patience:
-                    self.logger("&")
-                    self.logger(
+                    self.logger.log("&")
+                    self.logger.log(
                         f"Early stopping after {self.patience} epochs of no new best epoch",
                     )
-                    self.logger("&")
+                    self.logger.log("&")
                     return
 
                 #### Learning Rate Scheduler ####
@@ -256,9 +256,9 @@ class Trainer:
                     self.scheduler.step(self.val_loss)
                     if self.optimizer.param_groups[0]["lr"] != self.lr:
                         self.lr = self.optimizer.param_groups[0]["lr"]
-                        self.logger(
+                        self.logger.log(
                             f"New learning rate: {self.lr:.4g}",
                             right=" ",
                         )
-                    self.logger("=")
+                    self.logger.log("=")
         print(f"Training Complete! {self.output_file_name}")

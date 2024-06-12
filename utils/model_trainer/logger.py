@@ -3,36 +3,34 @@ import logging.config
 from functools import partial
 
 
-def logger_fcn(s, logger, right=None, model=False):
-    if model:
-        return logger.info(f"\n{s}")
-    console_width = 80
-    s_len = len(s)
-    if s_len == 1:
-        return logger_fcn(console_width * s, logger)
-    else:
-        if right is None:
-            return logger.info(f"| {s:<{console_width}} |")
-        elif len(right) == 1:
-            s = f"{(console_width//2 - s_len // 2 - 1) * right} {s} {(console_width//2 - (s_len - (s_len // 2)) - 1) * right}"
-            return logger_fcn(s, logger)
+class Logger:
+    def __init__(self, name):
+        self.root_logger = logging.getLogger(name)
+        self.root_logger.setLevel(logging.DEBUG)
+
+        self.handler = logging.FileHandler(name, "w", "utf-8")
+        self.handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter("%(asctime)s %(message)s", "%m/%d/%Y %H:%M:%S")
+        self.handler.setFormatter(formatter)
+        self.root_logger.addHandler(self.handler)
+        self.console_width = 80
+
+    def close(self):
+        self.root_logger.removeHandler(self.handler)
+        self.handler.close()
+
+    def log(self, s, right=None, model=False):
+        if model:
+            return self.root_logger.info(f"\n{s}")
+        s_len = len(s)
+        if s_len == 1:
+            return self.log(self.console_width * s)
         else:
-            s = f'{s}{(console_width-s_len-len(right))*" "}{right}'
-            return logger_fcn(s, logger)
-
-
-def get_logger(logging_file, filemode):
-    if logging_file is None:
-        return lambda *x: None  # Dummy logger
-    logger = logging.getLogger(__name__)
-    logging.basicConfig(
-        filename=logging_file,
-        filemode=filemode,
-        format="%(asctime)s %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        encoding="utf-8",
-        level=logging.DEBUG,
-    )
-
-    logger = partial(logger_fcn, logger=logger)
-    return logger
+            if right is None:
+                return self.root_logger.info(f"| {s:<{self.console_width}} |")
+            elif len(right) == 1:
+                s = f"{(self.console_width//2 - s_len // 2 - 1) * right} {s} {(self.console_width//2 - (s_len - (s_len // 2)) - 1) * right}"
+                return self.log(s)
+            else:
+                s = f'{s}{(self.console_width-s_len-len(right))*" "}{right}'
+                return self.log(s)

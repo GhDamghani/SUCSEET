@@ -257,8 +257,8 @@ def main():
     from multiprocessing import Pool
     from itertools import product
 
-    participants = ["sub-06"]  # [f"sub-{i:02d}" for i in range(1, 11)]
-    nums_classes = (2, 5)
+    participants = [f"sub-{i:02d}" for i in range(1, 11)]
+    nums_classes = (2, 5, 20)
 
     miniconfigs = [
         {"participant": participant, "num_classes": num_classes}

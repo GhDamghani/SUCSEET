@@ -33,7 +33,7 @@ def calculate_mcd(mfccs1: np.ndarray, mfccs2: np.ndarray) -> float:
     return mcd
 
 
-def get_loss(train_dataset, num_classes, logger=None):
+def get_loss(train_dataset, num_classes):
     _, cluster_train = next(train_dataset.generate_batch(-1))
     histogram_weights = np.unique(cluster_train, return_counts=True)[1]
     histogram_weights = histogram_weights / np.sum(histogram_weights)

@@ -97,19 +97,6 @@ def score(y, melSpec):
     return silhouette_avg
 
 
-def pearson_corr(X, Y, axis=0):
-    E_X = np.mean(X, axis=axis)
-    E_Y = np.mean(Y, axis=axis)
-    E_XY = np.mean(np.multiply(X, Y), axis=axis)
-    E_X2 = np.mean(np.square(X), axis=axis)
-    E_Y2 = np.mean(np.square(Y), axis=axis)
-
-    rho = (E_XY - E_X * E_Y) / np.sqrt(
-        (E_X2 - np.square(E_X)) * (E_Y2 - np.square(E_Y))
-    )
-    return rho
-
-
 def powerfrommelSpec(melSpec):
     return np.square(np.exp(melSpec)).mean()
 
@@ -126,7 +113,7 @@ def train(n_clusters, nfolds, participant, melSpec):
         melSpec,
         window_size=1,
         num_folds=nfolds,
-        output_size=-1,
+        output_indices=(-1,),
     )
 
     scores = np.empty((nfolds,))
@@ -161,14 +148,14 @@ def train(n_clusters, nfolds, participant, melSpec):
     return output_dict, scores
 
 
-def main(n_clusters):
-    # n_clusters = 2
+def main(miniconfig):
+    n_clusters = miniconfig["n_clusters"]
 
     nfolds = 10
     dataset_name = "Word"
     vocoder_name = "VocGAN"  # "Griffin_Lim"
     path_input = join(master_path, "dataset", dataset_name, vocoder_name)
-    participant = "sub-06"  #    "p07_ses1_sentences"
+    participant = miniconfig["participant"]  # "sub-06"   "p07_ses1_sentences"
 
     save_output = True
     save_reconstructed = True
@@ -188,6 +175,8 @@ def main(n_clusters):
 
     if custom_cluster:
         output_dict = np.load(output_file_name + ".npz")
+        with np.load(output_file_name + "_stats.npz") as f:
+            scores = f["scores"]
     else:
         output_dict, scores = train(n_clusters, nfolds, participant, melSpec)
 
@@ -205,11 +194,30 @@ def main(n_clusters):
         axis=0,
     )
 
+    centered_melSpec_random = np.concatenate(
+        [
+            np.stack(
+                tuple(
+                    output_dict[f"centers_{fold:02d}"][x]
+                    for x in np.random.randint(
+                        0, n_clusters, len(output_dict[f"y_test_{fold:02d}"])
+                    )
+                ),
+                axis=0,
+            )
+            for fold in range(nfolds)
+        ],
+        axis=0,
+    )
+
     if save_output:
         np.savez_compressed(output_file_name, **output_dict)
 
     if save_stats:
-        correlation = pearson_corr(melSpec, centered_melSpec, axis=1)
+        correlation = utils.stats.pearson_corr(melSpec, centered_melSpec, axis=1)
+        correlation_random = utils.stats.pearson_corr(
+            melSpec, centered_melSpec_random, axis=1
+        )
         hist_train = np.zeros((nfolds, n_clusters), dtype=int)
         hist_test = np.zeros((nfolds, n_clusters), dtype=int)
 
@@ -224,49 +232,62 @@ def main(n_clusters):
         np.savez_compressed(
             output_file_name + "_stats",
             correlation=correlation,
+            correlation_random=correlation_random,
             scores=scores,
             hist_train=hist_train,
             hist_test=hist_test,
         )
 
     if save_reconstructed:
-        if vocoder_name == "VocGAN":
-            model_path = join(
-                "..", "utils", "vocoders", "VocGAN", "vctk_pretrained_model_3180.pt"
-            )
-            VocGAN = StreamingVocGan(model_path, is_streaming=False)
-            centered_melSpec = torch.tensor(
-                np.transpose(centered_melSpec).astype(np.float32)
-            )
-            waveform_standard, standard_processing_time = (
-                VocGAN.mel_spectrogram_to_waveform(mel_spectrogram=centered_melSpec)
-            )
-            StreamingVocGan.save(
-                waveform=waveform_standard,
-                file_path=output_file_name + ".wav",
-            )
-        elif vocoder_name == "Griffin_Lim":
-            audiosr = 16000
-            center_audio = createAudio(centered_melSpec, audiosr)
-            scipy.io.wavfile.write(
-                output_file_name + ".wav",
-                int(audiosr),
-                center_audio,
-            )
+        reconstruction(vocoder_name, centered_melSpec, output_file_name)
+        # reconstruction(
+        #     vocoder_name, centered_melSpec_random, output_file_name + "_random"
+        # )
+
+
+def reconstruction(vocoder_name, melSpec, output_file_name):
+    if vocoder_name == "VocGAN":
+        model_path = join(
+            "..", "utils", "vocoders", "VocGAN", "vctk_pretrained_model_3180.pt"
+        )
+        VocGAN = StreamingVocGan(model_path, is_streaming=False)
+        melSpec = torch.tensor(np.transpose(melSpec).astype(np.float32))
+        waveform_standard, standard_processing_time = (
+            VocGAN.mel_spectrogram_to_waveform(mel_spectrogram=melSpec)
+        )
+        StreamingVocGan.save(
+            waveform=waveform_standard,
+            file_path=output_file_name + ".wav",
+        )
+    elif vocoder_name == "Griffin_Lim":
+        audiosr = 16000
+        center_audio = createAudio(melSpec, audiosr)
+        scipy.io.wavfile.write(
+            output_file_name + ".wav",
+            int(audiosr),
+            center_audio,
+        )
 
 
 if __name__ == "__main__":
     from multiprocessing import Pool
     import time
+    from itertools import product
 
     start_time = time.perf_counter()
 
     # participants = ["sub-06"]  # [f"sub-{i:02d}" for i in range(1, 11)]
+    participants = [f"sub-{i:02d}" for i in range(1, 11) if i != 6]
 
-    n_clusters = [2, 5, 10, 20]
+    n_clusterss = [2, 5, 10, 20]
+
+    miniconfigs = [
+        {"participant": participant, "n_clusters": n_clusters}
+        for participant, n_clusters in product(participants, n_clusterss)
+    ]
 
     with Pool() as pool:
-        pool.map(main, n_clusters)
+        pool.map(main, miniconfigs)
 
     end_time = time.perf_counter()
     print(f"Done! Execution time: {end_time - start_time:.2f} seconds")

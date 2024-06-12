@@ -1,1 +1,1 @@
-# SUC-SEET: Speech Unit Classification from Stereotactic EEG using Transformer Models
+# SUCSEET: Speech Unit Classification from Stereotactic EEG using Transformer Models

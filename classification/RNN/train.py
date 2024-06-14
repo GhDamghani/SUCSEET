@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from os.path import join
+from os.path import join, exists
 import loss_metrics
 import shutil
 from model import SpeechDecodingModel_clf
@@ -24,6 +24,16 @@ def main(config):
     np.random.seed(config.SEED)
 
     logger_file = join("logs", f"train-{config.file_names.local}.log")
+    if exists(logger_file):
+        with open(logger_file, "r") as f:
+            lines = f.readlines()
+            if (
+                len(lines) > 0
+                and ("&" * 80) in lines[-1]
+                or any([f"Epoch: {config.EPOCHS-1:04d}" in line for line in lines])
+            ):
+                return None
+
     logger = Logger(logger_file)
 
     dataset = iter(
@@ -85,6 +95,7 @@ def train_main(miniconfig):
     import config
 
     config0 = config.Config()
+    config0.participant = miniconfig["participant"]
     config0.num_classes = miniconfig["num_classes"]
     config0.fold = miniconfig["fold"]
     config0.proc()
@@ -96,7 +107,7 @@ if __name__ == "__main__":
     from multiprocessing import Pool
     from itertools import product
 
-    participants = [f"sub-{i:02d}" for i in range(1, 11) if i != 6]  # ["sub-06"]  #
+    participants = [f"sub-{i:02d}" for i in range(1, 11)]  # ["sub-06"]  #
     nums_classes = (2, 5, 10, 20)
     folds = [i for i in range(10)]  # (0, 1)  #   #
 
@@ -104,19 +115,18 @@ if __name__ == "__main__":
         {"participant": participant, "num_classes": num_classes, "fold": fold}
         for participant, num_classes, fold in product(participants, nums_classes, folds)
     ]
-    miniconfigs.extend(
-        [
-            {"participant": "sub-06", "num_classes": num_classes, "fold": fold}
-            for num_classes, fold in product([10, 20], folds)
-        ]
-    )
     # train_main(miniconfigs[0])
-    with Pool(processes=4) as pool:
-        pool.map(train_main, miniconfigs)
+    parallel = True
+    if parallel:
+        with Pool(processes=4) as pool:
+            pool.map(train_main, miniconfigs)
+    else:
+        for miniconfig in miniconfigs:
+            train_main(miniconfig)
 
-    # import test
+    import test
 
-    # test.main()
-    # import os
+    test.main()
+    import os
 
-    # os.system("shutdown /s /t 1")
+    os.system("shutdown /s /t 1")

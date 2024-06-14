@@ -2,6 +2,8 @@ from sklearn.metrics import ConfusionMatrixDisplay, top_k_accuracy_score, accura
 import numpy as np
 import matplotlib.pyplot as plt
 
+plt.switch_backend("agg")
+
 
 def save_confusion_matrix(
     y_test,

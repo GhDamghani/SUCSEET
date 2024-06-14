@@ -37,6 +37,9 @@ def cluster_twostage(n_clusters, X_train, X_test, melSpec_train):
         melSpec_train[speech_mask_train],
     )
 
+    y_train[y_train == silence_index] = 0
+    y_test[y_test == silence_index] = 0
+
     y_train[speech_mask_train] = 1 + y1_train
     y_test[speech_mask_test] = 1 + y1_test
 
@@ -276,7 +279,7 @@ if __name__ == "__main__":
 
     start_time = time.perf_counter()
 
-    # participants = ["sub-06"]  # [f"sub-{i:02d}" for i in range(1, 11)]
+    # participants = ["sub-05"]  # [f"sub-{i:02d}" for i in range(1, 11)]
     participants = [f"sub-{i:02d}" for i in range(1, 11) if i != 6]
 
     n_clusterss = [2, 5, 10, 20]
@@ -286,8 +289,16 @@ if __name__ == "__main__":
         for participant, n_clusters in product(participants, n_clusterss)
     ]
 
-    with Pool() as pool:
-        pool.map(main, miniconfigs)
+    # main(miniconfigs[0])
+
+    parallel = False
+
+    if parallel:
+        with Pool() as pool:
+            pool.map(main, miniconfigs0)
+    else:
+        for miniconfig in miniconfigs:
+            main(miniconfig)
 
     end_time = time.perf_counter()
     print(f"Done! Execution time: {end_time - start_time:.2f} seconds")

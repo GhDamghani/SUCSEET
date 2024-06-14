@@ -348,7 +348,7 @@ if __name__ == "__main__":
 
     start_time = time.perf_counter()
 
-    participants = [f"sub-{i:02d}" for i in range(1, 11) if i != 6]
+    participants = [f"sub-{i:02d}" for i in range(1, 11)]
 
     nums_classes = [2, 5, 10, 20]
 
@@ -358,10 +358,13 @@ if __name__ == "__main__":
     ]
 
     # main(miniconfigs[0])
-    for miniconfig in miniconfigs:
-        main(miniconfig)
+    parallel = True
+    if parallel:
+        with Pool() as pool:
+            pool.map(main, miniconfigs)
+    else:
+        for miniconfig in miniconfigs:
+            main(miniconfig)
 
-    # with Pool() as pool:
-    #     pool.map(main, miniconfigs)
     end_time = time.perf_counter()
     print(f"Done! Execution time: {end_time - start_time:.2f} seconds")

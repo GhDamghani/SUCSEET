@@ -28,7 +28,7 @@ class Config:
         self.DEVICE = device("cuda" if cuda.is_available() else "cpu")
 
         self.clustering_method = "kmeans"
-        self.clf_name = "RNN_test"
+        self.clf_name = "RNN"
 
         self.num_classes = 2
         self.window_size = 40
@@ -37,7 +37,7 @@ class Config:
         self.dropout = 0.1
         self.optimizer = partial(optim.Adam, lr=1e-5, weight_decay=1e-2, amsgrad=True)
         self.BATCH_SIZE = 32
-        self.EPOCHS = 1
+        self.EPOCHS = 100
 
         self.output_indices = [-1]
 

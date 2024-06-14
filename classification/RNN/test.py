@@ -2,7 +2,7 @@ import torch
 from model import SpeechDecodingModel_clf
 import loss_metrics
 import numpy as np
-from os.path import join
+from os.path import join, exists
 import scipy
 import sys
 from sklearn.model_selection import KFold
@@ -258,7 +258,7 @@ def main():
     from itertools import product
 
     participants = [f"sub-{i:02d}" for i in range(1, 11)]
-    nums_classes = (2, 5, 20)
+    nums_classes = (2, 5, 10, 20)
 
     miniconfigs = [
         {"participant": participant, "num_classes": num_classes}

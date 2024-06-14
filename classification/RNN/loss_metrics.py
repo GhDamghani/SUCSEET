@@ -35,8 +35,11 @@ def calculate_mcd(mfccs1: np.ndarray, mfccs2: np.ndarray) -> float:
 
 def get_loss(train_dataset, num_classes):
     _, cluster_train = next(train_dataset.generate_batch(-1))
-    histogram_weights = np.unique(cluster_train, return_counts=True)[1]
-    histogram_weights = histogram_weights / np.sum(histogram_weights)
+    histogram_labels, histogram_counts = np.unique(cluster_train, return_counts=True)
+    histogram_weights = np.zeros(num_classes)
+    histogram_weights[histogram_labels.astype(int)] = histogram_counts / np.sum(
+        histogram_counts
+    )
 
     criterion = CrossEntropyLoss_class_balanced(histogram_weights, num_classes)
     return criterion, histogram_weights

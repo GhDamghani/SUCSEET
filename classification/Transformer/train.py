@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from os.path import join
+from os.path import join, exists
 import loss_metrics
 import shutil
 
@@ -25,6 +25,15 @@ def main(config):
     np.random.seed(config.SEED)
 
     logger_file = join("logs", f"train-{config.file_names.local}.log")
+    if exists(logger_file):
+        with open(logger_file, "r") as f:
+            lines = f.readlines()
+            if (
+                len(lines) > 0
+                and ("&" * 80) in lines[-1]
+                or any([f"Epoch: {config.EPOCHS-1:04d}" in line for line in lines])
+            ):
+                return None
     logger = Logger(logger_file)
 
     dataset = iter(
@@ -76,7 +85,7 @@ def main(config):
         optimizer,
         config.BATCH_SIZE,
         config.EPOCHS,
-        logger.log,
+        logger,
         device=config.DEVICE,
         output_file_name=config.file_names.file,
     )
@@ -88,6 +97,7 @@ def train_main(miniconfig):
     import config
 
     config0 = config.Config()
+    config0.participant = miniconfig["participant"]
     config0.num_classes = miniconfig["num_classes"]
     config0.fold = miniconfig["fold"]
     config0.proc()
@@ -104,17 +114,16 @@ if __name__ == "__main__":
     nums_classes = (2, 5, 20)
 
     miniconfigs = [
-        {"num_classes": num_classes, "fold": fold}
-        for num_classes, fold in product(nums_classes, folds)
+        {"participant": participant, "num_classes": num_classes, "fold": fold}
+        for participant, num_classes, fold in product(participants, nums_classes, folds)
     ]
-    parallel = True
+    parallel = False
     if parallel:
         with Pool(processes=4) as pool:
             pool.map(train_main, miniconfigs)
     else:
         for miniconfig in miniconfigs:
             train_main(miniconfig)
-
 
     import test
 

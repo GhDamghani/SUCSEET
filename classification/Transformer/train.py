@@ -99,23 +99,23 @@ if __name__ == "__main__":
     from multiprocessing import Pool
     from itertools import product
 
-    # participants = ["sub-06"]  # [f"sub-{i:02d}" for i in range(1, 11)]
-    folds = [0, 1]  # [i for i in range(10)]
-    nums_classes = (5,)  # (2, 5)
+    participants = [f"sub-{i:02d}" for i in range(1, 11)]
+    folds = [i for i in range(10)]
+    nums_classes = (2, 5, 20)
 
     miniconfigs = [
         {"num_classes": num_classes, "fold": fold}
         for num_classes, fold in product(nums_classes, folds)
     ]
-    # train_main(miniconfigs[0])
-    # for miniconfig in miniconfigs:
-    #     train_main(miniconfig)
-    with Pool(processes=4) as pool:
-        pool.map(train_main, miniconfigs)
+    parallel = True
+    if parallel:
+        with Pool(processes=4) as pool:
+            pool.map(train_main, miniconfigs)
+    else:
+        for miniconfig in miniconfigs:
+            train_main(miniconfig)
+
 
     import test
 
     test.main()
-    import os
-
-    os.system("shutdown /s /t 1")

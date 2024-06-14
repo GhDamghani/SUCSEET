@@ -261,8 +261,8 @@ def main():
     from multiprocessing import Pool
     from itertools import product
 
-    participants = ["sub-06"]  # [f"sub-{i:02d}" for i in range(1, 11)]
-    nums_classes = (2, 5)
+    participants = [f"sub-{i:02d}" for i in range(1, 11)]
+    nums_classes = (2, 5, 20)
 
     miniconfigs = [
         {"participant": participant, "num_classes": num_classes}
@@ -276,14 +276,6 @@ def main():
         save_test_results(config0)
         save_stats(config0)
         save_post_results(config0)
-
-    # miniconfigs[0]["fold"] = folds[0]
-    # main(miniconfigs[0], isfolds=True)
-    # main_seq2seq(miniconfigs[0])
-    # with Pool() as pool:
-    #     pool.map(main_seq2seq, miniconfigs)
-    # for miniconfigs0 in miniconfigs:
-    #     main_seq2seq(miniconfigs0)
 
 
 if __name__ == "__main__":

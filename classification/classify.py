@@ -304,41 +304,43 @@ def main(miniconfig):
     )
     utils.stats.save_stats_summary(file_names, num_classes)
     if save_reconstruction:
+        centered_melSpec = np.empty((feat.shape[0], melSpec_centers.shape[2]))
         for fold, (train_index, test_index) in enumerate(
             KFold(n_splits=nfolds, shuffle=False).split(feat)
         ):
-            centered_melSpec = np.empty((feat.shape[0], melSpec_centers.shape[1]))
-            centered_melSpec[train_index] = clf_data["centred_melSpec_train"][fold]
             centered_melSpec[test_index] = clf_data["centred_melSpec_test"][fold]
 
-            output_file_name = join(
-                output_path,
-                f"{dataset_name}_{vocoder_name}_{participant}_cluster_{clustering_method}_c{num_classes:02d}_f{nfolds:02d}_{fold:02d}.wav",
+        output_file_name = join(
+            output_path,
+            f"{dataset_name}_{vocoder_name}_{participant}_cluster_{clustering_method}_c{num_classes:02d}_f{nfolds:02d}_all.wav",
+        )
+        if vocoder_name == "VocGAN":
+            model_path = join(
+                master_path,
+                "utils",
+                "vocoders",
+                "VocGAN",
+                "vctk_pretrained_model_3180.pt",
             )
-            if vocoder_name == "VocGAN":
-                model_path = join(
-                    master_path, "vocoders", "VocGAN", "vctk_pretrained_model_3180.pt"
-                )
-                VocGAN = StreamingVocGan(model_path, is_streaming=False)
-                centered_melSpec = torch.tensor(
-                    np.transpose(centered_melSpec).astype(np.float32)
-                )
-                waveform_standard, standard_processing_time = (
-                    VocGAN.mel_spectrogram_to_waveform(mel_spectrogram=centered_melSpec)
-                )
-                StreamingVocGan.save(
-                    waveform=waveform_standard,
-                    file_path=output_file_name,
-                )
-            elif vocoder_name == "Griffin_Lim":
-                audiosr = 16000
-                center_audio = createAudio(centered_melSpec, audiosr)
-                scipy.io.wavfile.write(
-                    output_file_name,
-                    int(audiosr),
-                    center_audio,
-                )
-            break
+            VocGAN = StreamingVocGan(model_path, is_streaming=False)
+            centered_melSpec = torch.tensor(
+                np.transpose(centered_melSpec).astype(np.float32)
+            )
+            waveform_standard, standard_processing_time = (
+                VocGAN.mel_spectrogram_to_waveform(mel_spectrogram=centered_melSpec)
+            )
+            StreamingVocGan.save(
+                waveform=waveform_standard,
+                file_path=output_file_name,
+            )
+        elif vocoder_name == "Griffin_Lim":
+            audiosr = 16000
+            center_audio = createAudio(centered_melSpec, audiosr)
+            scipy.io.wavfile.write(
+                output_file_name,
+                int(audiosr),
+                center_audio,
+            )
 
 
 if __name__ == "__main__":

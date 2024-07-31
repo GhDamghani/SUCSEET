@@ -272,19 +272,7 @@ def main():
         save_test_results(config0)
         save_stats(config0)
         save_post_results(config0)
-        # break
-
-    # miniconfigs[0]["fold"] = folds[0]
-    # main(miniconfigs[0], isfolds=True)
-    # main_seq2seq(miniconfigs[0])
-    # with Pool() as pool:
-    #     pool.map(main_seq2seq, miniconfigs)
-    # for miniconfigs0 in miniconfigs:
-    #     main_seq2seq(miniconfigs0)
 
 
 if __name__ == "__main__":
     main()
-    # import os
-
-    # os.system("shutdown /s /t 1")

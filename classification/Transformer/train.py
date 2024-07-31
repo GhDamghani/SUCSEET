@@ -125,6 +125,9 @@ if __name__ == "__main__":
         for miniconfig in miniconfigs:
             train_main(miniconfig)
 
-    import test
+    # import test
 
-    test.main()
+    # test.main()
+    import os
+
+    os.system("shutdown /s /t 5")

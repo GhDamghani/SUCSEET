@@ -18,29 +18,8 @@ from utils.vocoders.Griffin_Lim import createAudio
 from utils.vocoders.VocGAN import StreamingVocGan
 
 
-# def save_confusion_matrix_speech(
-#     y_test,
-#     y_pred_test,
-#     train_acc,
-#     test_acc,
-#     config,
-#     isfolds=False,
-# ):
-#     if isfolds is False:
-#         conf_mat_title = f"{config.participant}, {config.num_classes} classes, {config.clf_name}\n Vocoder: {config.vocoder_name}\nkfold iteration: {config.fold} Accuracy: {test_acc:.3%} (train: {train_acc:.3%})"
-#     else:
-#         conf_mat_title = f"{config.participant}, {config.num_classes} classes, {config.clf_name}\n Vocoder: {config.vocoder_name}\nAll Folds, Accuracy: {test_acc:.3%} (train: {train_acc:.3%})"
-#     output_file_name = config.output_file_name + f"_confusion_speech.png"
-#     ConfusionMatrixDisplay.from_predictions(
-#         y_test, y_pred_test, normalize="true", text_kw={"fontsize": 12}
-#     )
-#     plt.gcf().set_size_inches(7, 7)
-#     plt.title(conf_mat_title)
-#     plt.savefig(output_file_name)
-
-
 def save_reconstruction(centred_melSpec, config):
-    output_file_name = config.output_file_name + ".wav"
+    output_file_name = config.file_names.file + ".wav"
     if config.vocoder_name == "VocGAN":
         model_path = join(
             master_path, "utils", "vocoders", "VocGAN", "vctk_pretrained_model_3180.pt"
@@ -201,6 +180,7 @@ def save_post_results(config):
     config.update()
     results = np.load(config.file_names.results + ".npy", allow_pickle=True).item()
     stats = np.load(config.file_names.stats + ".npy", allow_pickle=True).item()
+    centred_melSpec_list = []
     for i in range(config.nfolds):
         config.fold = i
         config.update()
@@ -252,8 +232,12 @@ def save_post_results(config):
             config.topk,
             config.file_names.histogram,
         )
-        # save_reconstruction(centred_melSpec, config)
         utils.stats.save_stats_summary(config.file_names, config.num_classes)
+        centred_melSpec_list.append(centred_melSpec)
+    config.fold = "all"
+    config.update()
+    centred_melSpec = np.concatenate(centred_melSpec_list, axis=0)
+    save_reconstruction(centred_melSpec, config)
 
 
 def main():
@@ -262,7 +246,7 @@ def main():
     from itertools import product
 
     participants = [f"sub-{i:02d}" for i in range(1, 11)]
-    nums_classes = (2, 5, 20)
+    nums_classes = (20,)
 
     miniconfigs = [
         {"participant": participant, "num_classes": num_classes}

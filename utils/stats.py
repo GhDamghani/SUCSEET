@@ -103,7 +103,7 @@ def save_histograms(
     plt.close()
 
 
-def pearson_corr(x, y, axis=1):
+def pearson_corr(x, y, axis=0):
 
     x_mean = np.mean(x, axis=axis, keepdims=True)
     y_mean = np.mean(y, axis=axis, keepdims=True)
@@ -115,6 +115,21 @@ def pearson_corr(x, y, axis=1):
 
     rho = nominator / denominator
     return rho
+
+
+from torch.nn.functional import cosine_similarity
+import torch
+
+
+def calculate_pearsonr(logits, y, axis=1):
+    logits = torch.from_numpy(logits)
+    y = torch.from_numpy(y)
+    pearson_r = cosine_similarity(
+        y - torch.mean(y, dim=axis).unsqueeze(axis),
+        logits - torch.mean(logits, dim=axis).unsqueeze(axis),
+        dim=axis,
+    )
+    return pearson_r.numpy()
 
 
 def save_stats(
@@ -146,15 +161,13 @@ def save_stats(
     train_total_speech = []
     test_total_speech = []
 
-    train_melSpec_corr = []
-    test_melSpec_corr = []
+    test_melSpec_corr = np.zeros((nfolds,))
 
     for fold in range(nfolds):
         y_train = results["y_train"][fold]
         y_test = results["y_test"][fold]
         y_pred_train = results["y_pred_train"][fold]
         y_pred_test = results["y_pred_test"][fold]
-        centred_melSpec_train = results["centred_melSpec_train"][fold]
         centred_melSpec_test = results["centred_melSpec_test"][fold]
 
         y_pred_train_labels = np.argmax(y_pred_train, axis=1)
@@ -233,13 +246,10 @@ def save_stats(
                 )
             )
 
-        train_melSpec_corr.append(
-            None  # pearson_corr(centred_melSpec_train, melSpecs_train[fold][window_size:])
-        )
-        test_melSpec_corr.append(
+        test_melSpec_corr[fold] = np.nanmean(
             pearson_corr(
-                centred_melSpec_test, melSpecs_test[fold][window_size - 1 :], axis=1
-            )
+                centred_melSpec_test, melSpecs_test[fold][window_size - 1 :], axis=0
+            ),
         )
 
     stats = {
@@ -262,6 +272,56 @@ def save_stats(
     np.save(output_file_name_stats, stats)
 
 
+def save_stats_reg(
+    results,
+    melSpecs_train,
+    melSpecs_test,
+    window_size,
+    nfolds,
+    output_file_name_stats,
+):
+
+    train_total = []
+    test_total = []
+
+    test_melSpec_corr = []
+
+    for fold in range(nfolds):
+        y_train = results["y_train"][fold]
+        y_test = results["y_test"][fold]
+        y_pred_train = results["y_pred_train"][fold]
+        y_pred_test = results["y_pred_test"][fold]
+
+        shift = 3
+        y_pred_test_0 = y_pred_test[0, :]
+        y_pred_test_rest = y_pred_test[1::shift, -shift:].reshape(
+            -1, y_pred_test.shape[2]
+        )
+
+        y_pred_test = np.concatenate((y_pred_test_0, y_pred_test_rest), axis=0)
+
+        train_total.append(len(y_train))
+        test_total.append(len(y_test))
+
+        test_melSpec_corr.append(
+            np.nanmean(
+                pearson_corr(
+                    y_pred_test[: melSpecs_test[fold].shape[0]],
+                    melSpecs_test[fold],
+                    axis=0,
+                )
+            )
+        )
+
+    stats = {
+        "train_total": train_total,
+        "test_total": test_total,
+        "test_melSpec_corr": test_melSpec_corr,
+    }
+
+    np.save(output_file_name_stats, stats)
+
+
 def save_stats_summary(file_names, num_classes):
     fold = "all"
     file_names.update(fold)
@@ -275,7 +335,7 @@ def save_stats_summary(file_names, num_classes):
     test_speech_accuracy = np.sum(stats["test_corrects_speech"]) / np.sum(
         stats["test_total_speech"]
     )
-    test_melSpec_corr = np.mean(np.concatenate(stats["test_melSpec_corr"]))
+    test_melSpec_corr = np.nanmean(stats["test_melSpec_corr"])
     if num_classes > 2:
         train_topk_accuracy = np.sum(stats["train_topk_corrects"]) / np.sum(
             stats["train_total"]

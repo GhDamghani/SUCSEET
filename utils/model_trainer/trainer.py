@@ -178,12 +178,20 @@ class Trainer:
                 self.metrics_val["loss"] += loss.item() * len(y)
 
                 if return_data:
-                    pred_all.append(
-                        pred.reshape(
-                            -1, len(self.model.output_indices), self.model.num_classes
-                        ).numpy()
-                    )
-                    y_all.append(y.reshape(-1, len(self.model.output_indices)).numpy())
+                    if self.model_task == "classification":
+                        pred_all.append(
+                            pred.reshape(
+                                -1,
+                                len(self.model.output_indices),
+                                self.model.num_classes,
+                            ).numpy()
+                        )
+                        y_all.append(
+                            y.reshape(-1, len(self.model.output_indices)).numpy()
+                        )
+                    elif self.model_task == "regression":
+                        pred_all.append(pred.numpy())
+                        y_all.append(y.numpy())
         if not (self.test_mode):
             loss_str = (
                 f"  Val Loss: {self.metrics_val['loss']/self.metrics_val['total']:.5g}"

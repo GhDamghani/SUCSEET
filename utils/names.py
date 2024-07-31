@@ -14,6 +14,10 @@ class Names:
     ) -> None:
         self.output_path = output_path
         self.local_template = f"{dataset_name}_{vocoder_name}_{participant}_cluster_{clustering_method}_c{num_classes:02d}_f{nfolds:02d}"
+        self.local_template_no_participant = f"{dataset_name}_{vocoder_name}_cluster_{clustering_method}_c{num_classes:02d}_f{nfolds:02d}"
+        self.local_template_no_participant_no_num_classes = (
+            f"{dataset_name}_{vocoder_name}_cluster_{clustering_method}_f{nfolds:02d}"
+        )
 
     def update(self, fold):
         self.local = self.local_template + (

@@ -168,9 +168,11 @@ def main(miniconfig):
     custom_cluster = False
 
     melSpec = np.load(join(path_input, f"{participant}_spec.npy"))
+    half_length = len(melSpec) // 2
+    melSpec = melSpec[:half_length]
     # feat = np.load(join(path_input, f"{participant}_feat.npy"))
 
-    output_path = join(master_path, "results", "clustering", "kmeans")
+    output_path = join(master_path, "results", "clustering", "kmeans_halfdata")
     makedirs(output_path, exist_ok=True)
     output_file_name = join(
         output_path,
@@ -184,16 +186,19 @@ def main(miniconfig):
     else:
         output_dict, scores = train(n_clusters, nfolds, participant, melSpec)
 
-    centered_melSpec = [
-        np.stack(
-            tuple(
-                output_dict[f"centers_{fold:02d}"][x]
-                for x in output_dict[f"y_test_{fold:02d}"]
-            ),
-            axis=0,
-        )
-        for fold in range(nfolds)
-    ]
+    centered_melSpec = np.concatenate(
+        [
+            np.stack(
+                tuple(
+                    output_dict[f"centers_{fold:02d}"][x]
+                    for x in output_dict[f"y_test_{fold:02d}"]
+                ),
+                axis=0,
+            )
+            for fold in range(nfolds)
+        ],
+        axis=0,
+    )
 
     if save_output:
         np.savez_compressed(output_file_name, **output_dict)
@@ -204,12 +209,7 @@ def main(miniconfig):
         hist_train = np.zeros((nfolds, n_clusters), dtype=int)
         hist_test = np.zeros((nfolds, n_clusters), dtype=int)
 
-        indices = [
-            x[1]
-            for x in KFold(n_splits=nfolds, shuffle=False).split(
-                np.arange(len(melSpec))
-            )
-        ]
+        indices = [x[1] for x in KFold(n_splits=nfolds).split(np.arange(len(melSpec)))]
         for i_fold in range(nfolds):
             correlation[i_fold] = np.nanmean(
                 utils.stats.pearson_corr(
@@ -232,7 +232,6 @@ def main(miniconfig):
         )
 
     if save_reconstructed:
-
         reconstruction(
             vocoder_name,
             np.concatenate(
@@ -241,6 +240,9 @@ def main(miniconfig):
             ),
             output_file_name,
         )
+        # reconstruction(
+        #     vocoder_name, centered_melSpec_random, output_file_name + "_random"
+        # )
 
 
 def reconstruction(vocoder_name, melSpec, output_file_name):
@@ -274,7 +276,7 @@ if __name__ == "__main__":
 
     start_time = time.perf_counter()
 
-    participants = [f"sub-{i:02d}" for i in range(1, 11)]
+    participants = ["sub-06"]
 
     n_clusterss = [2, 5, 10, 20]
 
